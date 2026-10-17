@@ -117,6 +117,11 @@ func initializeCatalog() error {
 	if err != nil {
 		return fmt.Errorf("chargement exercices Go: %w", err)
 	}
+	if checkpoint, err := LoadGoCheckpointExercises(); err != nil {
+		fmt.Println("Checkpoint Go CDA indisponible:", err)
+	} else {
+		exercises = append(exercises, checkpoint...)
+	}
 	jsExercises, err = LoadJSExercises(jsInstructionsDir)
 	if err != nil {
 		return fmt.Errorf("chargement exercices JS: %w", err)

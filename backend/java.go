@@ -3,81 +3,89 @@ package backend
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
-	"sync"
 )
 
-const (
-	javaCatalogURL        = "https://zone01normandie.org/api/object/rouen"
-	officialJavaTestImage = "ghcr.io/01-edu/test-java:latest"
+// Moulinettes Java : module-java pour le cursus actuel (CDA), test-java pour
+// l'ancien cursus div-01, conservé en archive.
+var (
+	officialJavaTestImage   = officialImage("test-java")
+	officialJavaModuleImage = officialImage("module-java")
 )
 
-// LoadJavaExercises deliberately exposes the three official Java checkpoints,
-// rather than the whole curriculum. Zone01 currently publishes no Java final
-// exam object in this catalogue.
+// javaExams : les trois checkpoints Java du CDA, et ceux de div-01 en
+// archive. Zone01 ne publie pas d'examen final Java.
+var javaExams = []zoneExam{
+	{path: "/rouen/cursus-cda/piscine-java/checkpoint-01-java", label: "Checkpoint 01 · ", image: "ghcr.io/01-edu/module-java"},
+	{path: "/rouen/cursus-cda/piscine-java/checkpoint-02-java", label: "Checkpoint 02 · ", image: "ghcr.io/01-edu/module-java"},
+	{path: "/rouen/cursus-cda/piscine-java/checkpoint-03-java", label: "Checkpoint 03 · ", image: "ghcr.io/01-edu/module-java"},
+	{path: "/rouen/div-01/piscine-java/checkpoint-01-java", label: archiveLabel + "Checkpoint 01 · ", archive: true, image: "ghcr.io/01-edu/test-java"},
+	{path: "/rouen/div-01/piscine-java/checkpoint-02-java", label: archiveLabel + "Checkpoint 02 · ", archive: true, image: "ghcr.io/01-edu/test-java"},
+	{path: "/rouen/div-01/piscine-java/checkpoint-03-java", label: archiveLabel + "Checkpoint 03 · ", archive: true, image: "ghcr.io/01-edu/test-java"},
+}
+
+// LoadJavaExercises charge les checkpoints Java du catalogue Zone01.
 func LoadJavaExercises() ([]Exercise, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, javaCatalogURL, nil)
+	root, err := zoneCatalog(ctx)
 	if err != nil {
 		return nil, err
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("catalogue Java: HTTP %d", res.StatusCode)
-	}
-	var root zoneRustNode
-	if err := json.NewDecoder(res.Body).Decode(&root); err != nil {
-		return nil, err
-	}
-	targets := map[string]string{
-		"/rouen/div-01/piscine-java/checkpoint-01-java": "Checkpoint 01",
-		"/rouen/div-01/piscine-java/checkpoint-02-java": "Checkpoint 02",
-		"/rouen/div-01/piscine-java/checkpoint-03-java": "Checkpoint 03",
 	}
 	var list []Exercise
-	var visit func(zoneRustNode)
-	visit = func(node zoneRustNode) {
-		if label, ok := targets[node.Path]; ok {
-			for _, child := range node.Children {
-				if child.Type != "exercise" || child.Key == "" {
-					continue
-				}
-				runner := strings.TrimSpace(child.Name)
-				if runner == "" {
-					runner = javaClassName(child.Key)
-				}
-				image := officialJavaTestImage
-				for _, validation := range child.Attrs.Validations {
-					if validation.Type == "tester" && validation.TestImage != "" {
-						image = validation.TestImage
-						break
-					}
-				}
-				file := runner + ".java"
-				list = append(list, Exercise{ID: "java-" + child.Key, Title: label + " · " + runner, Runner: runner, Template: "public class " + runner + " {\n    // Écris ta solution ici.\n}\n", Statement: javaStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: image, SubjectURL: child.Attrs.Subject})
-			}
-			return
+	for _, found := range collectZoneExercises(root, javaExams) {
+		child := found.node
+		// Le nom de l'exercice désigne sa moulinette (dossier <Nom>_test) ;
+		// les fichiers attendus peuvent porter d'autres noms, parfois plusieurs.
+		runner := strings.TrimSpace(child.Name)
+		if runner == "" {
+			runner = javaClassName(child.Key)
 		}
-		for _, child := range node.Children {
-			visit(child)
+		files := javaExpectedFiles(child.Attrs.ExpectedFiles, runner)
+		id := "java-" + child.Key
+		if found.exam.archive {
+			id = "java-div01-" + child.Key
+		}
+		list = append(list, Exercise{ID: id, Title: found.exam.label + runner, Runner: runner, Template: javaTemplate(files), Statement: javaStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: files, Image: found.image, SubjectURL: child.Attrs.Subject, Archive: found.exam.archive})
+	}
+	sortExercises(list)
+	hydrateZoneStatements(ctx, list)
+	return list, nil
+}
+
+// javaExpectedFiles garde les fichiers .java annoncés par le catalogue, ou
+// <Nom>.java à défaut.
+func javaExpectedFiles(expected []string, runner string) []string {
+	var files []string
+	for _, f := range expected {
+		f = strings.TrimSpace(filepath.Base(f))
+		if strings.HasSuffix(f, ".java") {
+			files = append(files, f)
 		}
 	}
-	visit(root)
-	sort.Slice(list, func(i, j int) bool { return list[i].Title < list[j].Title })
-	hydrateJavaStatements(ctx, list)
-	return list, nil
+	if len(files) == 0 {
+		files = []string{runner + ".java"}
+	}
+	return files
+}
+
+// javaTemplate propose une classe par fichier attendu.
+func javaTemplate(files []string) string {
+	var b strings.Builder
+	if len(files) > 1 {
+		b.WriteString("// Fichiers attendus : " + strings.Join(files, ", ") + ".\n")
+		b.WriteString("// Écris toutes les classes ici : chacune sera placée dans son propre fichier.\n\n")
+	}
+	for i, f := range files {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("public class " + strings.TrimSuffix(f, ".java") + " {\n    // Écris ta solution ici.\n}\n")
+	}
+	return b.String()
 }
 
 func javaClassName(key string) string {
@@ -99,27 +107,6 @@ func javaStatementPlaceholder(subject string) string {
 	return "## Énoncé Java\n\nChargement de l’énoncé officiel Zone01 : `" + subject + "`."
 }
 
-func hydrateJavaStatements(ctx context.Context, exercises []Exercise) {
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				if statement, err := fetchZoneStatement(ctx, exercises[i].SubjectURL); err == nil && statement != "" {
-					exercises[i].Statement = statement
-				}
-			}
-		}()
-	}
-	for i := range exercises {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
-}
-
 func RunJavaExercise(ex Exercise, code string) (bool, string) {
 	dir, err := os.MkdirTemp(rootDir, "javaexam-*")
 	if err != nil {
@@ -132,9 +119,9 @@ func RunJavaExercise(ex Exercise, code string) (bool, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
 	defer cancel()
-	image := ex.Image
+	image := pinnedImage(ex.Image)
 	if image == "" {
-		image = officialJavaTestImage
+		image = officialJavaModuleImage
 	}
 	args := append([]string{"run", "--rm", "--platform", "linux/amd64"}, baseDockerRunArgs("")...)
 	args = withOptionalCPULimit(args)
@@ -159,13 +146,22 @@ func RunJavaExercise(ex Exercise, code string) (bool, string) {
 	return true, out
 }
 
+// prepareJavaStudentDir écrit le code dans student/<Nom>/, un fichier par
+// type public, comme Java l'exige : la moulinette compile tous les fichiers
+// de ce dossier avec ses tests.
 func prepareJavaStudentDir(dir string, ex Exercise, code string) error {
 	project := filepath.Join(dir, ex.Runner)
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		return err
 	}
-	if !strings.HasSuffix(code, "\n") {
-		code += "\n"
+	fallback := ex.Runner + ".java"
+	if len(ex.ExpectedFiles) > 0 {
+		fallback = ex.ExpectedFiles[0]
 	}
-	return os.WriteFile(filepath.Join(project, ex.Runner+".java"), []byte(code), 0o644)
+	for name, source := range javaSourceFiles(code, fallback) {
+		if err := os.WriteFile(filepath.Join(project, name), []byte(source), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

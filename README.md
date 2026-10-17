@@ -33,8 +33,10 @@ de bascule sont documentés dans [l'architecture des services](docs/architecture
 
 - Go et JavaScript : énoncés Markdown open source stockés dans
   `exam-instructions/` et `Js_exam_instructions/`.
-- Rust et Java : catalogues et énoncés open source chargés depuis l'API
-  Zone01 ; leurs images de test sont déterminées par le catalogue officiel.
+- Rust, Java et checkpoint Go CDA : catalogues et énoncés open source
+  chargés depuis l'API Zone01 ; leurs images de test sont déterminées par le
+  catalogue officiel. Les images, épinglées par digest, et les archives de
+  l'ancien cursus sont décrites dans [les moulinettes](docs/moulinettes.md).
 - Les tests s'exécutent uniquement avec `RUNNER_MODE=docker`, sans réseau,
   avec limites de mémoire et de processus, un `tmpfs` temporaire et les
   capacités Linux retirées. Une limite CPU n'est appliquée que si

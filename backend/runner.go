@@ -10,7 +10,12 @@ import (
 	"strings"
 )
 
-const officialGoRunnerImage = "ghcr.io/01-edu/test-go@sha256:9c57c88e68f8937617a26d805396c775d5a88f43e214b91386986f89a9df13bf"
+// Moulinettes Go : test-go pour les examens de la Piscine Go, module-go pour
+// le checkpoint du cursus actuel (CDA).
+var (
+	officialGoRunnerImage = officialImage("test-go")
+	officialGoModuleImage = officialImage("module-go")
+)
 
 // RunExercise evaluates code with the same public test image as the Go Final
 // Exam. The image owns the test suite; this repository only prepares the
@@ -23,15 +28,16 @@ func RunExercise(ex Exercise, code string) (bool, string) {
 	defer os.RemoveAll(studentDir)
 	_ = os.Chmod(studentDir, 0o777)
 
-	if err := prepareOfficialGoStudentDir(studentDir, ex.ID, code); err != nil {
-		return false, "Erreur de préparation du code: " + err.Error()
-	}
-
+	// La moulinette cherche le programme dans student/<exercice>/ : le nom
+	// officiel (Runner), pas l'identifiant interne (cda-…).
 	exerciseID := strings.TrimSpace(ex.Runner)
 	if exerciseID == "" {
 		exerciseID = ex.ID
 	}
-	stdout, stderr, runErr := RunOfficialGoDocker(studentDir, exerciseID)
+	if err := prepareOfficialGoStudentDir(studentDir, exerciseID, code); err != nil {
+		return false, "Erreur de préparation du code: " + err.Error()
+	}
+	stdout, stderr, runErr := RunOfficialGoDocker(goImageFor(ex), studentDir, exerciseID)
 	out := strings.TrimSpace(stdout + "\n" + stderr)
 
 	if runErr != nil {
@@ -85,12 +91,12 @@ func ensureTrailingNewline(code string) string {
 	return code + "\n"
 }
 
-func RunOfficialGoDocker(studentDir, exerciseID string) (string, string, error) {
+func RunOfficialGoDocker(image, studentDir, exerciseID string) (string, string, error) {
 	timeout := runTimeout()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	args := officialGoDockerArgs(studentDir, exerciseID)
+	args := officialGoDockerArgsFor(image, studentDir, exerciseID)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	var stdout, stderr bytes.Buffer
@@ -104,17 +110,37 @@ func RunOfficialGoDocker(studentDir, exerciseID string) (string, string, error) 
 }
 
 func officialGoDockerArgs(studentDir, exerciseID string) []string {
+	return officialGoDockerArgsFor(goRunnerImage(), studentDir, exerciseID)
+}
+
+// officialGoDockerArgsFor monte le code de l'élève là où l'image l'attend :
+// /go-tests/student pour test-go, /test-go/student pour module-go.
+func officialGoDockerArgsFor(image, studentDir, exerciseID string) []string {
+	workdir := "/go-tests"
+	if strings.Contains(image, "/module-go") {
+		workdir = "/test-go"
+	}
 	args := []string{"run", "--rm", "--platform", "linux/amd64"}
 	args = append(args, baseDockerRunArgs("")...)
 	args = withOptionalCPULimit(args)
 	return append(args,
-		"-v", studentDir+":/go-tests/student:rw",
-		// The official go-tests module resolves `student` as ../piscine-go
+		"-v", studentDir+":"+workdir+"/student:rw",
+		// The official test module resolves `student` as ../piscine-go
 		// after copying itself into root's home directory.
 		"-v", studentDir+":/root/piscine-go:rw",
 		"-e", "EXERCISE="+filepath.Base(exerciseID),
-		goRunnerImage(),
+		image,
 	)
+}
+
+// goImageFor choisit la moulinette d'un exercice Go. RUNNER_GO_DOCKER_IMAGE
+// ne remplace que celle des examens de la Piscine.
+func goImageFor(ex Exercise) string {
+	image := pinnedImage(ex.Image)
+	if image == "" || strings.Contains(image, "/test-go") {
+		return goRunnerImage()
+	}
+	return image
 }
 
 func goRunnerImage() string {

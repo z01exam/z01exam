@@ -66,7 +66,7 @@ func RunJSDocker(studentDir, exerciseID, expectedFiles string) (string, string, 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	image := getenvDefault("RUNNER_JS_DOCKER_IMAGE", "ghcr.io/01-edu/module-js:latest")
+	image := jsRunnerImage()
 	cmdArgs := []string{
 		"run", "--rm",
 	}
@@ -205,7 +205,7 @@ func syntaxLocationFromDockerCheck(studentDir, fileName string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	image := getenvDefault("RUNNER_JS_DOCKER_IMAGE", "ghcr.io/01-edu/module-js:latest")
+	image := jsRunnerImage()
 	target := "/jail/student/" + filepath.Base(fileName)
 	cmdArgs := []string{"run", "--rm", "--entrypoint", "node"}
 	cmdArgs = append(cmdArgs, baseDockerRunArgs("")...)
@@ -286,4 +286,10 @@ func jsInjectLineOffset(exerciseName string) int {
 		return len(strings.Split(inject, "\n"))
 	}
 	return 0
+}
+
+// jsRunnerImage : la moulinette JS officielle épinglée, sauf réglage
+// RUNNER_JS_DOCKER_IMAGE.
+func jsRunnerImage() string {
+	return getenvDefault("RUNNER_JS_DOCKER_IMAGE", officialImage("module-js"))
 }
