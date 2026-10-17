@@ -13,10 +13,10 @@ fois.
 
 | Parcours | Ensemble | Image | Exercices |
 | --- | --- | --- | --- |
-| Go | Piscine Go (examens 01 à 03, final, retry) | `test-go` | Markdown de `exam-instructions/` |
+| Go | Piscine Go (examens 01 à 03, final, retry) | `test-go` | 60 |
 | Go | Checkpoint CDA | `module-go` | 61 |
 | JavaScript | Checkpoint JS | `module-js` | 31 |
-| Rust | Checkpoints CDA | `module-rust` | 40 |
+| Rust | Checkpoints CDA | `module-rust` | 38 |
 | Rust | Archive div-01 : examen final | `test-rust` | 31 |
 | Java | Checkpoints CDA 01 à 03 | `module-java` | 45 |
 | Java | Archive div-01 : checkpoints 01 à 03 | `test-java` | 45 |
