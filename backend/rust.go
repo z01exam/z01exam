@@ -3,22 +3,20 @@ package backend
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
-	"sync"
 )
 
-const (
-	rustCatalogURL              = "https://zone01normandie.org/api/object/rouen"
-	officialRustExamImage       = "ghcr.io/01-edu/test-rust:latest"
-	officialRustCheckpointImage = "ghcr.io/01-edu/module-rust:latest"
+// Moulinettes Rust : module-rust pour le cursus actuel (CDA), test-rust
+// pour l'ancien cursus div-01, conservé en archive.
+var (
+	officialRustExamImage       = officialImage("test-rust")
+	officialRustCheckpointImage = officialImage("module-rust")
 )
 
 type zoneRustNode struct {
@@ -31,8 +29,9 @@ type zoneRustNode struct {
 }
 
 type zoneRustAttrs struct {
-	Subject     string `json:"subject"`
-	Validations []struct {
+	Subject       string   `json:"subject"`
+	ExpectedFiles []string `json:"expectedFiles"`
+	Validations   []struct {
 		Type      string `json:"type"`
 		TestImage string `json:"testImage"`
 	} `json:"validations"`
@@ -43,94 +42,42 @@ type zoneRustAttrs struct {
 	} `json:"codeEditor"`
 }
 
-// LoadRustExercises loads only the current final checkpoint and final exam.
-// They are supersets of earlier Rust checkpoints/exams and use distinct
-// official images, which is retained on each exercise.
+// rustExams : le checkpoint final CDA réunit les exercices des checkpoints
+// précédents ; l'examen final div-01 reste disponible en archive.
+var rustExams = []zoneExam{
+	{path: "/rouen/cursus-cda/piscine-rust/final-checkpoint-rust", label: "Checkpoint · ", image: "ghcr.io/01-edu/module-rust"},
+	{path: "/rouen/div-01/piscine-rust/final-exam-rust", label: archiveLabel + "Exam final · ", archive: true, image: "ghcr.io/01-edu/test-rust"},
+}
+
+// LoadRustExercises charge les exercices Rust du catalogue Zone01.
 func LoadRustExercises() ([]Exercise, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rustCatalogURL, nil)
+	root, err := zoneCatalog(ctx)
 	if err != nil {
 		return nil, err
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("catalogue Rust: HTTP %d", res.StatusCode)
-	}
-	var root zoneRustNode
-	if err := json.NewDecoder(res.Body).Decode(&root); err != nil {
-		return nil, err
-	}
-	targets := map[string]struct {
-		prefix, label, image string
-	}{
-		"/rouen/cursus-cda/piscine-rust/final-checkpoint-rust": {"checkpoint", "Checkpoint", officialRustCheckpointImage},
-		"/rouen/div-01/piscine-rust/final-exam-rust":           {"exam", "Exam final", officialRustExamImage},
 	}
 	var list []Exercise
-	var visit func(zoneRustNode)
-	visit = func(node zoneRustNode) {
-		if target, ok := targets[node.Path]; ok {
-			for _, child := range node.Children {
-				if child.Type != "exercise" || child.Key == "" {
-					continue
-				}
-				image := target.image
-				for _, validation := range child.Attrs.Validations {
-					if validation.Type == "tester" && validation.TestImage != "" {
-						image = validation.TestImage
-						break
-					}
-				}
-				// The official Rust test images import every submitted exercise as a
-				// crate.  Some legacy editor metadata still mentions main.rs, but
-				// placing such a submission there makes the official tests unable to
-				// import it.  Keep the runner's actual contract: src/lib.rs.
-				file := "src/lib.rs"
-				runner := child.Name
-				if runner == "" {
-					runner = strings.ReplaceAll(child.Key, "-", "_")
-				}
-				list = append(list, Exercise{ID: "rust-" + target.prefix + "-" + child.Key, Title: target.label + " · " + child.Name, Runner: runner, Template: rustTemplate(file), Statement: rustStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: image, SubjectURL: child.Attrs.Subject})
-			}
-			return
+	for _, found := range collectZoneExercises(root, rustExams) {
+		child := found.node
+		prefix := "checkpoint"
+		if found.exam.archive {
+			prefix = "exam"
 		}
-		for _, child := range node.Children {
-			visit(child)
+		// The official Rust test images import every submitted exercise as a
+		// crate.  Some legacy editor metadata still mentions main.rs, but
+		// placing such a submission there makes the official tests unable to
+		// import it.  Keep the runner's actual contract: src/lib.rs.
+		file := "src/lib.rs"
+		runner := child.Name
+		if runner == "" {
+			runner = strings.ReplaceAll(child.Key, "-", "_")
 		}
+		list = append(list, Exercise{ID: "rust-" + prefix + "-" + child.Key, Title: found.exam.label + child.Name, Runner: runner, Template: rustTemplate(file), Statement: rustStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: found.image, SubjectURL: child.Attrs.Subject, Archive: found.exam.archive})
 	}
-	visit(root)
-	sort.Slice(list, func(i, j int) bool { return list[i].Title < list[j].Title })
-	hydrateRustStatements(ctx, list)
+	sortExercises(list)
+	hydrateZoneStatements(ctx, list)
 	return list, nil
-}
-
-// hydrateRustStatements preserves the same in-app subject experience as the
-// Go and JS tracks. Failures deliberately keep the concise fallback so a
-// temporary Zone01 content outage cannot prevent the app from starting.
-func hydrateRustStatements(ctx context.Context, exercises []Exercise) {
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				if statement, err := fetchZoneStatement(ctx, exercises[i].SubjectURL); err == nil && statement != "" {
-					exercises[i].Statement = statement
-				}
-			}
-		}()
-	}
-	for i := range exercises {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
 }
 
 func fetchZoneStatement(ctx context.Context, subject string) (string, error) {
@@ -186,9 +133,9 @@ func RunRustExercise(ex Exercise, code string) (bool, string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
 	defer cancel()
-	image := ex.Image
+	image := pinnedImage(ex.Image)
 	if image == "" {
-		image = officialRustExamImage
+		image = officialRustCheckpointImage
 	}
 	args := append([]string{"run", "--rm", "--platform", "linux/amd64"}, baseDockerRunArgs("")...)
 	args = withOptionalCPULimit(args)

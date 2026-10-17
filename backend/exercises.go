@@ -19,8 +19,11 @@ type Exercise struct {
 	Template      string   `json:"template"`
 	Runner        string   `json:"runner"`
 	ExpectedFiles []string `json:"expectedFiles,omitempty"`
-	Image         string   `json:"-"`
-	SubjectURL    string   `json:"-"`
+	// Archive : examen de l'ancien cursus (div-01), conservé et consultable
+	// mais jamais tiré dans un True Exam.
+	Archive    bool   `json:"archive,omitempty"`
+	Image      string `json:"-"`
+	SubjectURL string `json:"-"`
 }
 
 type RunRequest struct {
