@@ -1,0 +1,15 @@
+name = "z01exam-uptime"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+TARGET_URL = "https://z01exam.online"
+
+# Espace KV qui garde l'état (échecs consécutifs, alerte envoyée) entre deux
+# vérifications. Créé par `npx wrangler kv namespace create STATE`.
+[[kv_namespaces]]
+binding = "STATE"
+id = "A_REMPLACER"
