@@ -72,10 +72,11 @@ inconnue ». La livraison VPS incorpore explicitement le SHA dans le binaire.
 ## Déployer
 
 `render.yaml` construit le backend Go et lance le binaire `server`. En
-production, le déploiement est manuel : le workflow GitHub Actions attend
-l'approbation du mainteneur sur l'environnement `Production`, puis transmet le
-SHA attendu à `scripts/deploy_vps.sh`, qui construit, teste et bascule la
-nouvelle version avec retour arrière automatique. La documentation
+production, chaque fusion sur `main` est déployée automatiquement dès que la
+CI de ce commit est verte : le workflow GitHub Actions transmet le SHA à
+`scripts/deploy_vps.sh`, qui construit, teste et bascule la nouvelle version
+avec retour arrière automatique. Si plusieurs fusions s'enchaînent, seule la
+dernière est déployée. La documentation
 d'exploitation du serveur est tenue dans un dépôt privé.
 
 ## Contribuer

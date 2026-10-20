@@ -7,8 +7,9 @@
   une pull request, en brouillon dès le premier commit.
 - Une PR = un seul ticket, avec `Closes #N` dans la description.
 - La fusion est faite par le mainteneur principal après relecture et CI verte.
-- Le déploiement de production est manuel et approuvé par le mainteneur
-  principal. Ne jamais le déclencher.
+- La production est déployée automatiquement à chaque fusion sur `main` dont
+  la CI est verte (`.github/workflows/deploy.yml`). Ne jamais lancer de
+  déploiement à la main sans l'accord du mainteneur principal.
 
 ## Périmètre
 
