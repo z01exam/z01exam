@@ -64,4 +64,15 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o HostKeyAlias=z01exam-prod \
             -o ConnectTimeout=30 "$VPS_USER@$VPS_HOST" \
             "$VPS_DEPLOY_COMMAND" "$DEPLOY_SHA"
-          echo "Déployé : \`$DEPLOY_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check live version
+        if: steps.sha.outputs.skip == 'false'
+        env:
+          DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          live="$(curl --fail --silent --show-error --max-time 10 https://z01exam.online/api/version)"
+          echo "En ligne : $live"
+          case "$live" in
+            *"\"sha\":\"$DEPLOY_SHA\""*) echo "Déployé et en ligne : \`$DEPLOY_SHA\`" >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "::error::le site public ne sert pas $DEPLOY_SHA"; exit 1 ;;
+          esac
