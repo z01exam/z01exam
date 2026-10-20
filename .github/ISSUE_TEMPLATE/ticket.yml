@@ -61,6 +61,6 @@ body:
     attributes:
       label: Réglages (à reporter en étiquettes)
       options:
-        - label: Réservé aux mainteneurs (architecture, infra, données, sécurité) → étiquette `maintainers`
+        - label: Gros chantier, deux personnes au moins → étiquette `gros chantier`
         - label: Une discussion est nécessaire avant de coder → étiquette `à discuter`
         - label: Idéal pour débuter → étiquette `good first issue`

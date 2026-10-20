@@ -1,101 +1,62 @@
 # Contribuer à Z01EXAM
 
-Bienvenue ! Ce guide suppose que tu débutes avec Git : tout se fait avec des
-boutons, sans terminal.
+Bienvenue ! Ce guide suppose que tu débutes : Zie, le bot du Discord, te
+guide à chaque étape.
 
 ## Ce qu'il te faut
 
-- Un compte GitHub, ajouté au projet par le mainteneur, avec :
-  - la **double authentification** activée
-    ([Settings → Password and authentication](https://github.com/settings/security)),
-    obligatoire pour rejoindre l'organisation ;
-  - ton **e-mail privé** : coche *Keep my email addresses private* et *Block
-    command line pushes that expose my email* dans
-    [Settings → Emails](https://github.com/settings/emails). Sinon, ton
-    adresse personnelle apparaît publiquement dans chaque commit.
-- [GitHub Desktop](https://desktop.github.com/) pour récupérer et envoyer le code.
-- Un éditeur : VS Code ou WebStorm.
-- Pour lancer le site en local : Go 1.22 ou plus et Docker (voir le README).
+- Un compte GitHub avec la **double authentification** activée
+  ([Settings → Password and authentication](https://github.com/settings/security))
+  et ton **e-mail privé** (*Keep my email addresses private* et *Block command
+  line pushes that expose my email* dans [Settings → Emails](https://github.com/settings/emails)).
+- Git, un éditeur (VS Code ou WebStorm), Go 1.22 ou plus et Docker pour lancer
+  le site en local (voir le README).
+- Le rôle **Contributor** sur le [Discord](https://discord.gg/cP2Dn5DF6H) :
+  postule dans `#devenir-contributor`, puis tape `/lier` pour relier ton compte
+  GitHub.
 
-## Le parcours en 6 étapes
+## Le parcours
 
-### 1. Choisir un ticket
+Tout se passe sur Discord, avec Zie. Ne crée ni branche ni assignation à la
+main sur GitHub : Zie s'en charge.
 
-Ouvre l'onglet **Projects** du dépôt, puis le tableau Z01EXAM. Choisis une
-carte de la colonne **À faire**. Pour commencer, prends un ticket étiqueté
-`good first issue`.
+1. **Choisir** : dans `#tickets`, clique sur **Proposer** sous un ticket (ou
+   **Demander à rejoindre** s'il est déjà lancé). Tu entres dans le salon du
+   ticket : sa description est en haut.
+2. **Proposer** : explique dans le salon ce que tu as compris, ce que tu veux
+   faire et pourquoi, discutes-en avec les autres, puis clique sur
+   **🔔 Appeler le Maintainer**.
+3. **Coder** : une fois l'équipe validée, Zie t'assigne et crée la branche.
+   Les commandes git sont dans la carte en haut du salon. Teste avec
+   `make start` et `go test ./...` dans `backend/`.
+4. **Demander la relecture** : quand c'est prêt, clique sur
+   **📬 Demander la relecture** dans la carte : la PR s'ouvre avec
+   `Closes #42`. Si la CI est rouge ou si on te demande des changements, Zie te
+   prévient dans le salon.
+5. **Terminé** : le mainteneur fusionne, tu reçois un message privé et le
+   salon se ferme.
 
-### 2. Le prendre
-
-Ouvre la carte, puis clique sur **Assign yourself** dans la colonne de droite.
-Ton avatar apparaît sur la carte : tout le monde sait que tu t'en occupes.
-Fais glisser la carte dans **En cours**.
-
-Tu ne peux pas t'assigner ? Écris « Je prends » en commentaire, le mainteneur
-t'assignera.
-
-### 3. Créer ta branche depuis le ticket
-
-1. Dans le ticket, colonne de droite, section **Development**, clique sur
-   **Create a branch**, puis valide. La branche est créée et liée au ticket :
-   tout le monde verra tes commits depuis le ticket.
-2. Dans GitHub Desktop, **File → Clone repository** la première fois, puis
-   choisis z01exam.
-3. **Fetch origin**, puis **Current branch** : sélectionne la branche que tu
-   viens de créer.
-
-### 4. Coder et tester
-
-Ouvre le dossier dans ton éditeur, fais ta modification, puis lance le site
-avec `make start` et vérifie dans `http://localhost:8080`.
-
-Garde la modification petite : un ticket, un sujet.
-
-### 5. Montrer ton avancement dès le début
-
-Dès ton premier commit, ouvre une PR en **brouillon** : tout le monde voit où
-tu en es, et le mainteneur peut t'aider en cours de route.
-
-Dans GitHub Desktop :
-
-1. Écris un résumé en bas à gauche, puis clique sur **Commit**.
-2. Clique sur **Push origin**.
-3. Clique sur **Create Pull Request** : GitHub s'ouvre.
-4. Remplis le formulaire et garde la ligne `Closes #42` avec le numéro de ton
-   ticket : il se fermera tout seul quand la PR sera acceptée.
-5. Clique sur la flèche à côté du bouton vert, choisis **Create draft pull
-   request**, puis valide.
-
-Ensuite, à chaque fois que tu avances : **Commit**, puis **Push origin**. La PR
-se met à jour toute seule. Pousse au moins une fois par séance de travail.
-
-Quand tu as fini, clique sur **Ready for review** en bas de la PR, et fais
-glisser la carte dans **En relecture**.
-
-### 6. La relecture
-
-- La CI (les tests automatiques) se lance. Une croix rouge ? Ouvre le détail,
-  corrige, puis refais Commit et Push : la PR se met à jour.
-- Le mainteneur relit et peut laisser des commentaires. Corrige de la même
-  façon, puis réponds au commentaire.
-- Une fois approuvée, la PR est fusionnée par le mainteneur et la carte passe
-  dans **Fait**.
+Tu peux quitter un ticket à tout moment avec le bouton **🚪 Quitter**. 3
+tickets au plus par personne, 4 personnes au plus par ticket.
 
 ## Les étiquettes des tickets
 
 - 🌱 `good first issue` : idéal pour débuter.
-- 🔒 `maintainers` : réservé aux mainteneurs (architecture, infra, données, sécurité).
-- 💬 `à discuter` : une décision est à prendre avant de coder ; lis la section « À discuter » du ticket et échange avec les mainteneurs.
+- 🏗️ `gros chantier` : il faut au moins deux personnes pour le lancer.
+- 💬 `à discuter` : une décision d'architecture ou de produit est à trancher
+  dans le salon avant de coder.
 - `à valider` : proposition pas encore validée, on ne la prend pas.
 
-Chaque ticket décrit ce qui est attendu : contexte, spec fonctionnelle, spec code et « c'est fini quand ». Si quelque chose n'est pas clair, demande avant de coder.
+Chaque ticket décrit ce qui est attendu : contexte, spec fonctionnelle, spec
+code et « c'est fini quand ». Si quelque chose n'est pas clair, demande dans
+le salon avant de coder.
 
 ## Les règles
 
 - On ne pousse jamais directement sur `main` : tout passe par une PR.
 - Une PR = un seul sujet, testé.
 - Toute PR est relue et approuvée par le mainteneur avant d'être fusionnée.
-- La mise en production est faite par le mainteneur, jamais automatiquement.
+- Chaque fusion sur `main` est mise en ligne automatiquement : la relecture compte.
 - Un ticket pris sans nouvelles pendant deux semaines peut être réattribué.
 - Tout le monde respecte le [code de conduite](CODE_OF_CONDUCT.md).
 
