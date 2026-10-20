@@ -118,20 +118,13 @@ func harnessError(out string) bool {
 	return false
 }
 
-func goExercisesForE2E(t *testing.T) (piscine, cda []Exercise) {
+func goExercisesForE2E(t *testing.T) []Exercise {
 	t.Helper()
-	previous := instructionsDir
-	instructionsDir = filepath.Join("..", "exam-instructions")
-	t.Cleanup(func() { instructionsDir = previous })
-	piscine, err := LoadExercises()
+	list, err := LoadGoExercises()
 	if err != nil {
-		t.Fatalf("LoadExercises : %v", err)
+		t.Fatalf("LoadGoExercises : %v", err)
 	}
-	cda, err = LoadGoCheckpointExercises()
-	if err != nil {
-		t.Fatalf("LoadGoCheckpointExercises : %v", err)
-	}
-	return piscine, cda
+	return list
 }
 
 // Solutions officielles refusées par leur propre image (vérifié en lançant
@@ -148,16 +141,10 @@ var officialGoSolutionDefects = map[string]string{
 func TestOfficialE2EGoSolutionsPass(t *testing.T) {
 	requireOfficialE2E(t)
 	t.Setenv("RUNNER_GO_DOCKER_IMAGE", "")
-	piscine, cda := goExercisesForE2E(t)
-	for _, set := range []struct {
-		label, image, dir string
-		list              []Exercise
-	}{
-		{"Go Piscine (test-go)", officialGoRunnerImage, "/go-tests", piscine},
-		{"Go Checkpoint CDA (module-go)", officialGoModuleImage, "/test-go", cda},
-	} {
-		solutions := extractSolutions(t, set.image, set.dir)
-		results := runAll(set.list, func(ex Exercise) e2eResult {
+	list := goExercisesForE2E(t)
+	{
+		solutions := extractSolutions(t, officialGoModuleImage, "/test-go")
+		results := runAll(list, func(ex Exercise) e2eResult {
 			code, ok := readSolution(solutions, ex.Runner+"/main.go", ex.Runner+".go")
 			if !ok {
 				return e2eResult{id: ex.ID, skipped: "pas de solution officielle dans l'image"}
@@ -168,12 +155,12 @@ func TestOfficialE2EGoSolutionsPass(t *testing.T) {
 			}
 			return e2eResult{id: ex.ID, ok: pass, out: out}
 		})
-		reportE2E(t, set.label, results, true)
+		reportE2E(t, "Go (module-go)", results, true)
 	}
 }
 
-// Les images Rust n'embarquent pas de solutions : deux solutions écrites à
-// la main, présentes dans les checkpoints CDA comme dans l'archive div-01.
+// L'image Rust n'embarque pas de solutions : deux solutions écrites à la
+// main.
 var rustE2ESolutions = map[string]string{
 	"nextprime": `pub fn next_prime(nbr: u64) -> u64 {
     let mut n = nbr.max(2);
@@ -206,8 +193,8 @@ func TestOfficialE2ERustSolutionsPass(t *testing.T) {
 			selected = append(selected, ex)
 		}
 	}
-	if len(selected) != 2*len(rustE2ESolutions) {
-		t.Fatalf("exercices Rust trouvés : %d, attendu %d (CDA et archive)", len(selected), 2*len(rustE2ESolutions))
+	if len(selected) != len(rustE2ESolutions) {
+		t.Fatalf("exercices Rust trouvés : %d, attendu %d", len(selected), len(rustE2ESolutions))
 	}
 	results := runAll(selected, func(ex Exercise) e2eResult {
 		ok, out := RunRustExercise(ex, rustE2ESolutions[ex.Runner])
@@ -222,7 +209,7 @@ func TestOfficialE2ERustSolutionsPass(t *testing.T) {
 func TestOfficialE2ETemplatesFailCleanly(t *testing.T) {
 	requireOfficialE2E(t)
 	t.Setenv("RUNNER_GO_DOCKER_IMAGE", "")
-	piscine, cda := goExercisesForE2E(t)
+	golang := goExercisesForE2E(t)
 	rust, err := LoadRustExercises()
 	if err != nil {
 		t.Fatalf("LoadRustExercises : %v", err)
@@ -245,8 +232,7 @@ func TestOfficialE2ETemplatesFailCleanly(t *testing.T) {
 		list  []Exercise
 		run   func(Exercise, string) (bool, string)
 	}{
-		{"Go Piscine", piscine, RunExercise},
-		{"Go Checkpoint CDA", cda, RunExercise},
+		{"Go", golang, RunExercise},
 		{"Rust", rust, RunRustExercise},
 		{"Java", java, RunJavaExercise},
 		{"JS", js, func(ex Exercise, code string) (bool, string) {
@@ -281,9 +267,9 @@ func TestOfficialE2ETemplatesFailCleanly(t *testing.T) {
 	}
 }
 
-// Les images Java n'embarquent pas de solutions : quelques solutions écrites
-// à la main couvrent un fichier unique, une classe au nom différent de
-// l'exercice et un rendu sur plusieurs fichiers, en CDA comme en archive.
+// L'image Java n'embarque pas de solutions : quelques solutions écrites à la
+// main couvrent un fichier unique, une classe au nom différent de
+// l'exercice et un rendu sur plusieurs fichiers.
 var javaE2ESolutions = map[string]string{
 	"goodbye-mars": `public class GoodbyeMars {
     public static String goodbyeMars() {
@@ -368,27 +354,16 @@ func TestOfficialE2EJavaSolutionsPass(t *testing.T) {
 	}
 	var selected []Exercise
 	for _, ex := range list {
-		key := javaE2EKey(ex)
-		if _, ok := javaE2ESolutions[key]; ok {
+		if _, ok := javaE2ESolutions[strings.TrimPrefix(ex.ID, "java-")]; ok {
 			selected = append(selected, ex)
 		}
 	}
-	if len(selected) != 2*len(javaE2ESolutions) {
-		t.Fatalf("exercices Java trouvés : %d, attendu %d (CDA et archive)", len(selected), 2*len(javaE2ESolutions))
+	if len(selected) != len(javaE2ESolutions) {
+		t.Fatalf("exercices Java trouvés : %d, attendu %d", len(selected), len(javaE2ESolutions))
 	}
 	results := runAll(selected, func(ex Exercise) e2eResult {
-		ok, out := RunJavaExercise(ex, javaE2ESolutions[javaE2EKey(ex)])
+		ok, out := RunJavaExercise(ex, javaE2ESolutions[strings.TrimPrefix(ex.ID, "java-")])
 		return e2eResult{id: ex.ID, ok: ok, out: out}
 	})
 	reportE2E(t, "Java (solutions écrites à la main)", results, true)
-}
-
-// javaE2EKey renvoie la clé CDA de l'exercice : l'archive div-01 nomme
-// is-anagram ce que le CDA nomme check-anagram.
-func javaE2EKey(ex Exercise) string {
-	key := strings.TrimPrefix(strings.TrimPrefix(ex.ID, "java-div01-"), "java-")
-	if key == "is-anagram" {
-		return "check-anagram"
-	}
-	return key
 }

@@ -11,7 +11,7 @@ migration.
 | Service | Exécutable | Responsabilité | Expose | Consomme |
 | --- | --- | --- | --- | --- |
 | Web | `backend/cmd/web` | Sert l'interface, les styles et les contenus statiques ; point d'entrée public | `/`, `/api/exercises`, `/api/run` | Catalogue et Runner en HTTP via les URL de service |
-| Catalogue | `backend/cmd/catalog` | Construit et publie les catalogues Go, JS, Rust et Java | `GET /api/exercises?track=…` | Fichiers `exam-instructions/`, `Js_exam_instructions/` et API Zone01 pour Rust/Java |
+| Catalogue | `backend/cmd/catalog` | Construit et publie les catalogues Go, JS, Rust et Java | `GET /api/exercises?track=…` | Fichiers `Js_exam_instructions/` et API Zone01 pour Go, Rust et Java |
 | Runner | `backend/cmd/runner` | Valide une soumission et lance la moulinette isolée | `POST /api/run` | Snapshot privé du Catalogue, Docker et images officielles `ghcr.io/01-edu/*` |
 | Compatibilité | `backend/cmd/monolith` | Composition locale des trois responsabilités | Contrat public historique intégral | Fichiers, API Zone01 et Docker, comme avant |
 

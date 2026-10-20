@@ -12,12 +12,8 @@ import (
 	"strings"
 )
 
-// Moulinettes Rust : module-rust pour le cursus actuel (CDA), test-rust
-// pour l'ancien cursus div-01, conservé en archive.
-var (
-	officialRustExamImage       = officialImage("test-rust")
-	officialRustCheckpointImage = officialImage("module-rust")
-)
+// Moulinette Rust du cursus CDA.
+var officialRustCheckpointImage = officialImage("module-rust")
 
 type zoneRustNode struct {
 	Name     string                  `json:"name"`
@@ -43,10 +39,9 @@ type zoneRustAttrs struct {
 }
 
 // rustExams : le checkpoint final CDA réunit les exercices des checkpoints
-// précédents ; l'examen final div-01 reste disponible en archive.
+// précédents.
 var rustExams = []zoneExam{
 	{path: "/rouen/cursus-cda/piscine-rust/final-checkpoint-rust", label: "Checkpoint · ", image: "ghcr.io/01-edu/module-rust"},
-	{path: "/rouen/div-01/piscine-rust/final-exam-rust", label: archiveLabel + "Exam final · ", archive: true, image: "ghcr.io/01-edu/test-rust"},
 }
 
 // LoadRustExercises charge les exercices Rust du catalogue Zone01.
@@ -60,10 +55,6 @@ func LoadRustExercises() ([]Exercise, error) {
 	var list []Exercise
 	for _, found := range collectZoneExercises(root, rustExams) {
 		child := found.node
-		prefix := "checkpoint"
-		if found.exam.archive {
-			prefix = "exam"
-		}
 		// The official Rust test images import every submitted exercise as a
 		// crate.  Some legacy editor metadata still mentions main.rs, but
 		// placing such a submission there makes the official tests unable to
@@ -73,7 +64,7 @@ func LoadRustExercises() ([]Exercise, error) {
 		if runner == "" {
 			runner = strings.ReplaceAll(child.Key, "-", "_")
 		}
-		list = append(list, Exercise{ID: "rust-" + prefix + "-" + child.Key, Title: found.exam.label + child.Name, Runner: runner, Template: rustTemplate(file), Statement: rustStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: found.image, SubjectURL: child.Attrs.Subject, Archive: found.exam.archive})
+		list = append(list, Exercise{ID: "rust-checkpoint-" + child.Key, Title: found.exam.label + child.Name, Runner: runner, Template: rustTemplate(file), Statement: rustStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: found.image, SubjectURL: child.Attrs.Subject})
 	}
 	sortExercises(list)
 	hydrateZoneStatements(ctx, list)

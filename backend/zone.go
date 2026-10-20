@@ -49,14 +49,10 @@ func zoneCatalog(ctx context.Context) (zoneRustNode, error) {
 
 // zoneExam désigne un examen ou checkpoint du catalogue à proposer.
 type zoneExam struct {
-	path    string // chemin dans le catalogue, ex. /rouen/cursus-cda/checkpoint
-	label   string // préfixe du titre affiché
-	archive bool   // ancien cursus, conservé mais jamais tiré en True Exam
-	image   string // moulinette si le catalogue n'en annonce pas
+	path  string // chemin dans le catalogue, ex. /rouen/cursus-cda/checkpoint
+	label string // préfixe du titre affiché
+	image string // moulinette si le catalogue n'en annonce pas
 }
-
-// archiveLabel préfixe le titre des examens de l'ancien cursus.
-const archiveLabel = "Archive div-01 · "
 
 // zoneExamExercise est un exercice d'examen tel que le catalogue le décrit.
 type zoneExamExercise struct {
@@ -99,13 +95,9 @@ func collectZoneExercises(root zoneRustNode, exams []zoneExam) []zoneExamExercis
 	return found
 }
 
-// sortExercises place les ensembles courants avant les archives, puis trie
-// par titre.
+// sortExercises trie par titre.
 func sortExercises(list []Exercise) {
 	sort.SliceStable(list, func(i, j int) bool {
-		if list[i].Archive != list[j].Archive {
-			return !list[i].Archive
-		}
 		return strings.ToLower(list[i].Title) < strings.ToLower(list[j].Title)
 	})
 }

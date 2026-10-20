@@ -781,9 +781,7 @@ function setTrueExamMode(enabled) {
 }
 
 function buildTrueExamSeries() {
-    // Les examens de l'ancien cursus (archives) restent consultables mais ne
-    // sont jamais tirés dans un examen.
-    const source = getTrackExercises().filter(ex => !ex.archive);
+    const source = getTrackExercises();
     if (isJsTrack()) {
         const shuffled = [...source].sort(() => Math.random() - 0.5);
         return shuffled.slice(0, Math.min(10, shuffled.length));

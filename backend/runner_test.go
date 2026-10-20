@@ -62,24 +62,6 @@ func TestOfficialGoDockerArgsUseTheImageEntrypointContract(t *testing.T) {
 	}
 }
 
-func TestGoCatalogIsLimitedToCheckpointAndExamExercises(t *testing.T) {
-	previousInstructionsDir := instructionsDir
-	instructionsDir = filepath.Join("..", "exam-instructions")
-	t.Cleanup(func() { instructionsDir = previousInstructionsDir })
-
-	exercises, err := LoadExercises()
-	if err != nil {
-		t.Fatalf("LoadExercises: %v", err)
-	}
-	if got, want := len(exercises), 60; got != want {
-		t.Fatalf("catalog size = %d, want %d checkpoint/exam exercises", got, want)
-	}
-	only1 := FindExercise(exercises, "only1")
-	if only1 == nil || only1.Runner != "only1" {
-		t.Fatalf("only1 is missing or cannot be sent to the official image: %#v", only1)
-	}
-}
-
 func TestRunExerciseReturnsOfficialSuccessMessage(t *testing.T) {
 	useFakeDocker(t, "exit 0")
 
@@ -147,15 +129,15 @@ func TestRustRunnerIntegrationWithOfficialImage(t *testing.T) {
 	}
 	withTemporaryRunnerRoot(t)
 
-	code := "fn main() {\n    println!(\"Hello, Rust!!\");\n}\n"
+	code := "pub fn next_prime(nbr: u64) -> u64 {\n    let mut n = nbr.max(2);\n    while (2..n).take_while(|d| d * d <= n).any(|d| n % d == 0) {\n        n += 1;\n    }\n    n\n}\n"
 	ok, out := RunRustExercise(Exercise{
-		ID:            "rust-hello-rust",
-		Runner:        "hello_rust",
-		Image:         officialRustExamImage,
-		ExpectedFiles: []string{"src/main.rs"},
+		ID:            "rust-checkpoint-nextprime",
+		Runner:        "nextprime",
+		Image:         officialRustCheckpointImage,
+		ExpectedFiles: []string{"src/lib.rs"},
 	}, code)
 	if !ok {
-		t.Fatalf("official Rust Runner rejected a valid hello_rust submission: %s", out)
+		t.Fatalf("official Rust Runner rejected a valid nextprime submission: %s", out)
 	}
 }
 
@@ -165,14 +147,14 @@ func TestJavaRunnerIntegrationWithOfficialImage(t *testing.T) {
 	}
 	withTemporaryRunnerRoot(t)
 
-	code := "public class HelloWorld {\n    public static String helloWorld() {\n        return \"Hello World !\";\n    }\n}\n"
+	code := "public class GoodbyeMars {\n    public static String goodbyeMars() {\n        return \"Goodbye Mars !\";\n    }\n}\n"
 	ok, out := RunJavaExercise(Exercise{
-		ID:     "java-hello-world",
-		Runner: "HelloWorld",
-		Image:  officialJavaTestImage,
+		ID:     "java-goodbye-mars",
+		Runner: "GoodbyeMars",
+		Image:  officialJavaModuleImage,
 	}, code)
 	if !ok {
-		t.Fatalf("official Java Runner rejected a valid HelloWorld submission: %s", out)
+		t.Fatalf("official Java Runner rejected a valid GoodbyeMars submission: %s", out)
 	}
 }
 

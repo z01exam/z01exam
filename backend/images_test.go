@@ -28,7 +28,7 @@ func TestOfficialImagesArePinned(t *testing.T) {
 			t.Errorf("%s n'est pas épinglée par un digest complet : %q", name, ref)
 		}
 	}
-	for _, name := range []string{"test-go", "module-go", "module-js", "test-rust", "module-rust", "test-java", "module-java"} {
+	for _, name := range []string{"test-go", "module-go", "module-js", "module-rust", "module-java"} {
 		if officialImage(name) == "ghcr.io/01-edu/"+name {
 			t.Errorf("%s absente de la table des images", name)
 		}

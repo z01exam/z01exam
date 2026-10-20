@@ -65,7 +65,7 @@ le salon avant de coder.
 | Je veux changer… | Je regarde… |
 | --- | --- |
 | L'interface | `index.html`, `app.js`, `style.css` |
-| Un énoncé Go ou JS | `exam-instructions/`, `Js_exam_instructions/` |
+| Un énoncé JS | `Js_exam_instructions/` |
 | Une leçon du mode Learning | `learning-content/` |
 | Les tests et la moulinette | `backend/runner*.go`, `backend/rust.go`, `backend/java.go` |
 

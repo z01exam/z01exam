@@ -7,17 +7,15 @@ import "strings"
 // épinglage, un serveur garde indéfiniment la copie téléchargée la première
 // fois, et la correction diverge silencieusement de la plateforme.
 //
-// Les images module-* corrigent le cursus actuel (CDA) ; les images test-*
-// corrigent la Piscine Go et l'ancien cursus div-01, conservé en archive.
+// Les images module-* corrigent le cursus CDA ; test-go reste l'image Go par
+// défaut (RUNNER_GO_DOCKER_IMAGE, préflight du déploiement).
 // Mettre à jour une image : relever le digest du tag latest sur ghcr.io,
 // le reporter ici et relancer les moulinettes de bout en bout.
 var officialImages = map[string]string{
 	"ghcr.io/01-edu/test-go":     "ghcr.io/01-edu/test-go@sha256:9c57c88e68f8937617a26d805396c775d5a88f43e214b91386986f89a9df13bf",
 	"ghcr.io/01-edu/module-go":   "ghcr.io/01-edu/module-go@sha256:253a6b83f5208ed3c9ed010d0edde58a5d18004850aa4ca4b561c0cf6c9f19a1",
 	"ghcr.io/01-edu/module-js":   "ghcr.io/01-edu/module-js@sha256:396ad8ac2c15608a946feb337e7f51a0555f3b7a06245e7e02ba8489abac1325",
-	"ghcr.io/01-edu/test-rust":   "ghcr.io/01-edu/test-rust@sha256:979f5a497a90eb55ce610afcf87cdd01fea1ca8694a9cc98e6db22c028ea3e82",
 	"ghcr.io/01-edu/module-rust": "ghcr.io/01-edu/module-rust@sha256:9ca5ae6054ac27683d67e261016c3f9d2029c5e6417bc12ea3bc48b1d1f317dd",
-	"ghcr.io/01-edu/test-java":   "ghcr.io/01-edu/test-java@sha256:1dd466f222f56ce31be397004b11fb359795b9088db5aef496d3e52dfba78775",
 	"ghcr.io/01-edu/module-java": "ghcr.io/01-edu/module-java@sha256:0de34af00688443f99bce8648abd270b8a0646c429151e8513eeb106153fc347",
 }
 

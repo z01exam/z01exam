@@ -2,15 +2,15 @@ package backend
 
 import "context"
 
-// goExams : le checkpoint Go du cursus actuel (CDA). Les examens de la
-// Piscine Go restent servis depuis exam-instructions avec test-go.
+// goExams : le checkpoint Go du cursus CDA.
 var goExams = []zoneExam{
-	{path: "/rouen/cursus-cda/checkpoint", label: "Checkpoint CDA · ", image: "ghcr.io/01-edu/module-go"},
+	{path: "/rouen/cursus-cda/checkpoint", image: "ghcr.io/01-edu/module-go"},
 }
 
-// LoadGoCheckpointExercises charge le checkpoint Go du CDA depuis le
-// catalogue Zone01, avec ses énoncés officiels et la moulinette module-go.
-func LoadGoCheckpointExercises() ([]Exercise, error) {
+// LoadGoExercises charge le checkpoint Go du CDA depuis le catalogue Zone01,
+// avec ses énoncés officiels et la moulinette module-go. L'identifiant est le
+// nom officiel de l'exercice (onlya, brackets…).
+func LoadGoExercises() ([]Exercise, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
 	defer cancel()
 	root, err := zoneCatalog(ctx)
@@ -21,8 +21,8 @@ func LoadGoCheckpointExercises() ([]Exercise, error) {
 	for _, found := range collectZoneExercises(root, goExams) {
 		key := found.node.Key
 		list = append(list, Exercise{
-			ID:         "cda-" + key,
-			Title:      found.exam.label + key,
+			ID:         key,
+			Title:      key,
 			Statement:  "## Énoncé Go\n\nChargement de l’énoncé officiel Zone01 : `" + found.node.Attrs.Subject + "`.",
 			Template:   "package piscine\n\n// Implémente " + key + " comme décrit dans l'énoncé.\n",
 			Runner:     key,

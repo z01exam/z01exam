@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	instructionsDirName = "exam-instructions"
+	// rootMarker repère la racine du projet (frontend servi par le Web).
+	rootMarker          = "index.html"
 	serviceModeMonolith = "monolith"
 	serviceModeCatalog  = "catalog"
 	serviceModeRunner   = "runner"
@@ -26,7 +27,6 @@ var jsInstructionsDirCandidates = []string{
 
 var (
 	rootDir           string
-	instructionsDir   string
 	jsInstructionsDir string
 	exercises         []Exercise
 	jsExercises       []Exercise
@@ -85,7 +85,7 @@ func initialize(mode string) error {
 
 	// Support: si on lance depuis backend, remonter à la racine du projet.
 	for curr := rootDir; ; {
-		if DirExists(filepath.Join(curr, instructionsDirName)) {
+		if FileExists(filepath.Join(curr, rootMarker)) {
 			rootDir = curr
 			break
 		}
@@ -107,20 +107,12 @@ func initialize(mode string) error {
 
 func initializeCatalog() error {
 	var err error
-	instructionsDir = filepath.Join(rootDir, instructionsDirName)
 	jsInstructionsDir = resolveJSInstructionsDir(rootDir)
-	if err := CheckBackendLayout(); err != nil {
-		return err
-	}
 
-	exercises, err = LoadExercises()
+	exercises, err = LoadGoExercises()
 	if err != nil {
-		return fmt.Errorf("chargement exercices Go: %w", err)
-	}
-	if checkpoint, err := LoadGoCheckpointExercises(); err != nil {
-		fmt.Println("Checkpoint Go CDA indisponible:", err)
-	} else {
-		exercises = append(exercises, checkpoint...)
+		fmt.Println("Catalogue Go indisponible:", err)
+		exercises = []Exercise{}
 	}
 	jsExercises, err = LoadJSExercises(jsInstructionsDir)
 	if err != nil {

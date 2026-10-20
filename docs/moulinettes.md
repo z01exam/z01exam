@@ -13,23 +13,21 @@ fois.
 
 | Parcours | Ensemble | Image | Exercices |
 | --- | --- | --- | --- |
-| Go | Piscine Go (examens 01 à 03, final, retry) | `test-go` | 60 |
 | Go | Checkpoint CDA | `module-go` | 61 |
 | JavaScript | Checkpoint JS | `module-js` | 31 |
 | Rust | Checkpoints CDA | `module-rust` | 38 |
-| Rust | Archive div-01 : examen final | `test-rust` | 31 |
 | Java | Checkpoints CDA 01 à 03 | `module-java` | 45 |
-| Java | Archive div-01 : checkpoints 01 à 03 | `test-java` | 45 |
 
-Les ensembles CDA (cursus actuel) apparaissent en premier. Les archives
-div-01 (ancien cursus) restent disponibles, préfixées « Archive div-01 », et
-ne sont jamais tirées en mode True Exam.
+Seule la version actuelle de la formation (CDA) est proposée, sans doublon.
+Les anciennes versions (Piscine Go avec `test-go`, cursus div-01 avec
+`test-rust` et `test-java`) restent dans l'historique Git. `test-go` reste
+épinglée comme image Go par défaut (`RUNNER_GO_DOCKER_IMAGE`).
 
 ## Contrats à respecter
 
 - **Go** : le code est monté dans `student/` et `/root/piscine-go`
-  (dossier de travail `/go-tests` pour `test-go`, `/test-go` pour
-  `module-go`) ; `EXERCISE` désigne l'exercice.
+  (dossier de travail `/test-go` pour `module-go`) ; `EXERCISE` désigne
+  l'exercice.
 - **Rust** : un projet Cargo par exercice ; les tests sont dans l'image.
 - **Java** : les fichiers sont attendus dans `student/<Exercice>/`, avec le
   nom de chaque type public. Un exercice peut attendre plusieurs fichiers
@@ -47,7 +45,7 @@ ne sont jamais tirées en mode True Exam.
    RUN_OFFICIAL_E2E=1 go test -run TestOfficialE2E -timeout 3h -v .
    ```
 
-   Les solutions officielles embarquées dans les images Go doivent passer,
+   Les solutions officielles embarquées dans l'image Go doivent passer,
    quelques solutions Rust et Java écrites à la main aussi (ces images n'en
    embarquent pas), et le modèle
    vide de chaque exercice doit échouer sur une vraie erreur de compilation

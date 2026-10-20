@@ -9,22 +9,15 @@ import (
 	"strings"
 )
 
-// Moulinettes Java : module-java pour le cursus actuel (CDA), test-java pour
-// l'ancien cursus div-01, conservé en archive.
-var (
-	officialJavaTestImage   = officialImage("test-java")
-	officialJavaModuleImage = officialImage("module-java")
-)
+// Moulinette Java du cursus CDA.
+var officialJavaModuleImage = officialImage("module-java")
 
-// javaExams : les trois checkpoints Java du CDA, et ceux de div-01 en
-// archive. Zone01 ne publie pas d'examen final Java.
+// javaExams : les trois checkpoints Java du CDA. Zone01 ne publie pas
+// d'examen final Java.
 var javaExams = []zoneExam{
 	{path: "/rouen/cursus-cda/piscine-java/checkpoint-01-java", label: "Checkpoint 01 · ", image: "ghcr.io/01-edu/module-java"},
 	{path: "/rouen/cursus-cda/piscine-java/checkpoint-02-java", label: "Checkpoint 02 · ", image: "ghcr.io/01-edu/module-java"},
 	{path: "/rouen/cursus-cda/piscine-java/checkpoint-03-java", label: "Checkpoint 03 · ", image: "ghcr.io/01-edu/module-java"},
-	{path: "/rouen/div-01/piscine-java/checkpoint-01-java", label: archiveLabel + "Checkpoint 01 · ", archive: true, image: "ghcr.io/01-edu/test-java"},
-	{path: "/rouen/div-01/piscine-java/checkpoint-02-java", label: archiveLabel + "Checkpoint 02 · ", archive: true, image: "ghcr.io/01-edu/test-java"},
-	{path: "/rouen/div-01/piscine-java/checkpoint-03-java", label: archiveLabel + "Checkpoint 03 · ", archive: true, image: "ghcr.io/01-edu/test-java"},
 }
 
 // LoadJavaExercises charge les checkpoints Java du catalogue Zone01.
@@ -45,11 +38,7 @@ func LoadJavaExercises() ([]Exercise, error) {
 			runner = javaClassName(child.Key)
 		}
 		files := javaExpectedFiles(child.Attrs.ExpectedFiles, runner)
-		id := "java-" + child.Key
-		if found.exam.archive {
-			id = "java-div01-" + child.Key
-		}
-		list = append(list, Exercise{ID: id, Title: found.exam.label + runner, Runner: runner, Template: javaTemplate(files), Statement: javaStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: files, Image: found.image, SubjectURL: child.Attrs.Subject, Archive: found.exam.archive})
+		list = append(list, Exercise{ID: "java-" + child.Key, Title: found.exam.label + runner, Runner: runner, Template: javaTemplate(files), Statement: javaStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: files, Image: found.image, SubjectURL: child.Attrs.Subject})
 	}
 	sortExercises(list)
 	hydrateZoneStatements(ctx, list)

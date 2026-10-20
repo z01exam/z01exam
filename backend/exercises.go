@@ -19,11 +19,8 @@ type Exercise struct {
 	Template      string   `json:"template"`
 	Runner        string   `json:"runner"`
 	ExpectedFiles []string `json:"expectedFiles,omitempty"`
-	// Archive : examen de l'ancien cursus (div-01), conservé et consultable
-	// mais jamais tiré dans un True Exam.
-	Archive    bool   `json:"archive,omitempty"`
-	Image      string `json:"-"`
-	SubjectURL string `json:"-"`
+	Image         string   `json:"-"`
+	SubjectURL    string   `json:"-"`
 }
 
 type RunRequest struct {
@@ -67,57 +64,6 @@ func catalogExercises(list []RunnerExercise) []Exercise {
 		result[i].SubjectURL = exercise.SubjectURL
 	}
 	return result
-}
-
-// Vérifie la structure nécessaire à l'affichage des exercices Go.
-// Les tests ne sont volontairement plus lus depuis le dépôt : ils sont
-// embarqués dans l'image officielle de l'école.
-func CheckBackendLayout() error {
-	if !DirExists(instructionsDir) {
-		return fmt.Errorf("%s introuvable", instructionsDirName)
-	}
-	return nil
-}
-
-// Charge les exercices Go depuis exam-instructions. Le runner est l'identifiant
-// officiel de l'exercice, résolu dans l'image ghcr.io/01-edu/test-go.
-func LoadExercises() ([]Exercise, error) {
-	entries, err := os.ReadDir(instructionsDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var list []Exercise
-
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		id := e.Name()
-
-		readmePath := filepath.Join(instructionsDir, id, "README.md")
-		if !FileExists(readmePath) {
-			continue
-		}
-		body, err := os.ReadFile(readmePath)
-		if err != nil {
-			return nil, fmt.Errorf("lecture README %s: %w", id, err)
-		}
-
-		template := "package piscine\n\n// Implémente " + id + " comme décrit dans l'énoncé.\n"
-
-		list = append(list, Exercise{
-			ID:        id,
-			Title:     id,
-			Statement: string(body),
-			Example:   "",
-			Template:  template,
-			Runner:    id,
-		})
-	}
-
-	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
-	return list, nil
 }
 
 // Charge les exercices JS depuis js_exam_instructions (fichiers .md).

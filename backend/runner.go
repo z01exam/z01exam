@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// Moulinettes Go : test-go pour les examens de la Piscine Go, module-go pour
-// le checkpoint du cursus actuel (CDA).
+// Moulinettes Go : module-go pour les exercices du CDA ; test-go reste l'image
+// par défaut d'un exercice sans image (RUNNER_GO_DOCKER_IMAGE).
 var (
 	officialGoRunnerImage = officialImage("test-go")
 	officialGoModuleImage = officialImage("module-go")
@@ -29,7 +29,7 @@ func RunExercise(ex Exercise, code string) (bool, string) {
 	_ = os.Chmod(studentDir, 0o777)
 
 	// La moulinette cherche le programme dans student/<exercice>/ : le nom
-	// officiel (Runner), pas l'identifiant interne (cda-…).
+	// officiel (Runner).
 	exerciseID := strings.TrimSpace(ex.Runner)
 	if exerciseID == "" {
 		exerciseID = ex.ID
