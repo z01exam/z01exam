@@ -6,11 +6,26 @@ VPS : si le serveur tombe, l'alerte part quand même.
 - **Toutes les minutes** : `GET /api/version` doit répondre.
 - **Toutes les 5 minutes** : une vraie correction Go (`POST /api/run`, exercice
   `onlya`) doit réussir, ce qui vérifie aussi Docker et les moulinettes.
-- **Après 2 échecs de suite** : alerte sur chaque canal configuré.
-- **Au retour** : message « rétabli » avec la durée de la panne.
+
+Un ralentissement n'est pas une panne : seules les pannes confirmées envoient
+un SMS.
+
+| Problème | Seuil | Canaux |
+| --- | --- | --- |
+| Site injoignable | 3 minutes de suite | Discord, e-mail, SMS |
+| Corrections cassées (erreur Docker, résultat faux) | 2 contrôles de suite (10 min) | Discord, e-mail, SMS |
+| Corrections lentes (délai dépassé, 504) | 3 contrôles de suite (15 min) | Discord, e-mail |
+
+- Un succès entre deux échecs remet le compteur à zéro : des échecs espacés
+  ne s'additionnent pas.
+- « Rétabli » demande 2 succès de suite ; il part par SMS seulement si la
+  panne avait envoyé un SMS et duré au moins 10 minutes.
+- Pas plus d'un SMS par type de panne toutes les 30 minutes.
+- Si une panne « lente » devient « cassée », une alerte de plus part.
 
 L'état (échecs consécutifs, alerte envoyée) est gardé dans un espace KV
-(`npx wrangler kv key get state --binding STATE --remote`). Le Worker n'a pas
+(`npx wrangler kv key get state --binding STATE --remote`), écrit seulement
+quand il change. Le Worker n'a pas
 d'adresse publique.
 
 ## Canaux
@@ -61,3 +76,12 @@ curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"   # 2e : alerte
 
 L'espace KV de `wrangler dev --remote` est celui de prévisualisation : la
 simulation ne touche pas l'état de production.
+
+## Tests
+
+```sh
+node --test monitoring/uptime/worker.test.mjs
+```
+
+Ils simulent le site, les corrections et les canaux : ralentissement qui
+oscille (aucun SMS), panne confirmée, anti-rebond, rétabli.
