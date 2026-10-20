@@ -41,7 +41,7 @@ type zoneRustAttrs struct {
 // rustExams : le checkpoint final CDA réunit les exercices des checkpoints
 // précédents.
 var rustExams = []zoneExam{
-	{path: "/rouen/cursus-cda/piscine-rust/final-checkpoint-rust", label: "Checkpoint · ", image: "ghcr.io/01-edu/module-rust"},
+	{path: "/rouen/cursus-cda/piscine-rust/final-checkpoint-rust", image: "ghcr.io/01-edu/module-rust"},
 }
 
 // LoadRustExercises charge les exercices Rust du catalogue Zone01.
@@ -64,7 +64,7 @@ func LoadRustExercises() ([]Exercise, error) {
 		if runner == "" {
 			runner = strings.ReplaceAll(child.Key, "-", "_")
 		}
-		list = append(list, Exercise{ID: "rust-checkpoint-" + child.Key, Title: found.exam.label + child.Name, Runner: runner, Template: rustTemplate(file), Statement: rustStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: found.image, SubjectURL: child.Attrs.Subject})
+		list = append(list, Exercise{ID: "rust-checkpoint-" + child.Key, Title: child.Name, Runner: runner, Template: rustTemplate(file), Statement: rustStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: []string{file}, Image: found.image, SubjectURL: child.Attrs.Subject})
 	}
 	sortExercises(list)
 	hydrateZoneStatements(ctx, list)

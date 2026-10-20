@@ -15,9 +15,9 @@ var officialJavaModuleImage = officialImage("module-java")
 // javaExams : les trois checkpoints Java du CDA. Zone01 ne publie pas
 // d'examen final Java.
 var javaExams = []zoneExam{
-	{path: "/rouen/cursus-cda/piscine-java/checkpoint-01-java", label: "Checkpoint 01 · ", image: "ghcr.io/01-edu/module-java"},
-	{path: "/rouen/cursus-cda/piscine-java/checkpoint-02-java", label: "Checkpoint 02 · ", image: "ghcr.io/01-edu/module-java"},
-	{path: "/rouen/cursus-cda/piscine-java/checkpoint-03-java", label: "Checkpoint 03 · ", image: "ghcr.io/01-edu/module-java"},
+	{path: "/rouen/cursus-cda/piscine-java/checkpoint-01-java", image: "ghcr.io/01-edu/module-java"},
+	{path: "/rouen/cursus-cda/piscine-java/checkpoint-02-java", image: "ghcr.io/01-edu/module-java"},
+	{path: "/rouen/cursus-cda/piscine-java/checkpoint-03-java", image: "ghcr.io/01-edu/module-java"},
 }
 
 // LoadJavaExercises charge les checkpoints Java du catalogue Zone01.
@@ -38,7 +38,7 @@ func LoadJavaExercises() ([]Exercise, error) {
 			runner = javaClassName(child.Key)
 		}
 		files := javaExpectedFiles(child.Attrs.ExpectedFiles, runner)
-		list = append(list, Exercise{ID: "java-" + child.Key, Title: found.exam.label + runner, Runner: runner, Template: javaTemplate(files), Statement: javaStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: files, Image: found.image, SubjectURL: child.Attrs.Subject})
+		list = append(list, Exercise{ID: "java-" + child.Key, Title: runner, Runner: runner, Template: javaTemplate(files), Statement: javaStatementPlaceholder(child.Attrs.Subject), ExpectedFiles: files, Image: found.image, SubjectURL: child.Attrs.Subject})
 	}
 	sortExercises(list)
 	hydrateZoneStatements(ctx, list)

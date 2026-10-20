@@ -50,7 +50,6 @@ func zoneCatalog(ctx context.Context) (zoneRustNode, error) {
 // zoneExam désigne un examen ou checkpoint du catalogue à proposer.
 type zoneExam struct {
 	path  string // chemin dans le catalogue, ex. /rouen/cursus-cda/checkpoint
-	label string // préfixe du titre affiché
 	image string // moulinette si le catalogue n'en annonce pas
 }
 
