@@ -21,12 +21,6 @@ export default {
     const minute = new Date(event.scheduledTime).getUTCMinutes();
     ctx.waitUntil(monitor(env, minute % 5 === 0));
   },
-
-  // Page d'état en lecture seule ; ne déclenche aucune alerte.
-  async fetch(request, env) {
-    const state = await loadState(env);
-    return Response.json({ target: env.TARGET_URL, ...state });
-  },
 };
 
 async function monitor(env, withRun) {

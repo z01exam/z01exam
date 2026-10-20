@@ -1,6 +1,8 @@
 name = "z01exam-uptime"
 main = "worker.js"
 compatibility_date = "2026-10-01"
+# Pas d'adresse publique : le Worker ne fait que se déclencher chaque minute.
+workers_dev = false
 
 [triggers]
 crons = ["* * * * *"]
@@ -12,4 +14,5 @@ TARGET_URL = "https://z01exam.online"
 # vérifications. Créé par `npx wrangler kv namespace create STATE`.
 [[kv_namespaces]]
 binding = "STATE"
-id = "A_REMPLACER"
+id = "dadb1073e145491db0c003762e0e2fab"
+preview_id = "18e9d8ce98834aa2b5b00343a438b7c8"

@@ -9,8 +9,9 @@ VPS : si le serveur tombe, l'alerte part quand même.
 - **Après 2 échecs de suite** : alerte sur chaque canal configuré.
 - **Au retour** : message « rétabli » avec la durée de la panne.
 
-L'état (échecs consécutifs, alerte envoyée) est gardé dans un espace KV.
-`GET` sur l'URL du Worker affiche cet état, sans rien déclencher.
+L'état (échecs consécutifs, alerte envoyée) est gardé dans un espace KV
+(`npx wrangler kv key get state --binding STATE --remote`). Le Worker n'a pas
+d'adresse publique.
 
 ## Canaux
 
