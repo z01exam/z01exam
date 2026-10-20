@@ -37,8 +37,14 @@ npx wrangler deploy
 npx wrangler secret put DISCORD_WEBHOOK_URL   # etc. pour chaque secret
 ```
 
-- Webhook Discord : paramètres du salon → Intégrations → Webhooks → Nouveau
-  webhook → Copier l'URL.
+- Webhook Discord : Zie crée le salon privé et le webhook, dont l'URL passe
+  directement dans le secret sans s'afficher (depuis le dépôt du bot) :
+
+  ```sh
+  go run ./cmd/admin create-channel --private alertes
+  go run ./cmd/admin create-webhook alertes "Surveillance z01exam" \
+    | (cd <ce dossier> && npx wrangler secret put DISCORD_WEBHOOK_URL)
+  ```
 - SMS Free Mobile : espace abonné → Mes options → « Notifications par SMS »
   (activer) ; l'identifiant et la clé s'y affichent.
 
