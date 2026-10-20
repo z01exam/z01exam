@@ -51,12 +51,17 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_DEPLOY_COMMAND: ${{ secrets.VPS_DEPLOY_COMMAND }}
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          # Clé d'hôte épinglée, au format « z01exam-prod <type> <clé> » :
+          # pas de ssh-keyscan, qui fait confiance à la première clé reçue.
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           DEPLOY_SHA: ${{ steps.sha.outputs.sha }}
         run: |
+          [ -n "$KNOWN_HOSTS" ] || { echo "::error::secret VPS_KNOWN_HOSTS absent"; exit 1; }
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" \
+          echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o HostKeyAlias=z01exam-prod \
+            -o ConnectTimeout=30 "$VPS_USER@$VPS_HOST" \
             "$VPS_DEPLOY_COMMAND" "$DEPLOY_SHA"
           echo "Déployé : \`$DEPLOY_SHA\`" >> "$GITHUB_STEP_SUMMARY"
