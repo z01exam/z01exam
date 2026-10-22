@@ -20,10 +20,11 @@ guide à chaque étape.
 Tout se passe sur Discord, avec Zie. Ne crée ni branche ni assignation à la
 main sur GitHub : Zie s'en charge.
 
-Chaque ticket passe par quatre étapes. Zie explique l'étape dans le salon du
-ticket quand il y entre, et le salon change de catégorie Discord :
+Sur Discord, un ticket est dans l'une de trois catégories, une couleur chacune.
+Zie explique l'étape dans le salon quand le ticket y entre. Le vert (terminé)
+n'existe que sur GitHub : à la fusion, le salon se ferme.
 
-1. **💬 Discussion** (catégorie « 💬 Discussions »). Dans `#tickets`, clique
+1. **⚪ Discussion** (catégorie « 💬 Discussions »). Dans `#tickets`, clique
    sur **Proposer** sous un ticket : tu entres dans son salon, avec sa
    description en haut. On décide ensemble de ce qu'on va coder et de la
    façon de le faire : explique ce que tu as compris, ce que tu veux faire et
@@ -35,15 +36,15 @@ ticket quand il y entre, et le salon change de catégorie Discord :
    teste avec `make start` et `go test ./...` dans `backend/`, puis
    `git push`. Sur un ticket déjà en cours, **Rejoindre** te fait entrer dans
    l'équipe tout de suite, tant qu'elle compte moins de 4 personnes.
-3. **🟡 Relecture** (catégorie « 🟡 En relecture »). Quand c'est prêt, clique
+3. **🟡 En attente de relecture** (catégorie « 🟡 En relecture »). Quand c'est prêt, clique
    sur **📬 Demander la relecture** : Zie ouvre la PR (avec `Closes #42`). Le
    Maintainer lit le code sur GitHub et pose ses questions ou demande des
    changements ; Zie te prévient dans le salon (CI rouge, changements
    demandés, approbation). Corrige sur la même branche et fais un
    `git push`.
-4. **🟢 Terminé**. Quand le Maintainer est d'accord avec l'équipe, il fusionne
-   depuis Discord : le ticket se ferme et chacun reçoit un message privé avec
-   les liens vers la PR et les changements.
+Quand le Maintainer est d'accord avec l'équipe, il fusionne depuis Discord :
+**🟢 le ticket est terminé**, il se ferme et chacun reçoit un message privé
+avec les liens vers la PR et les changements.
 
 Tu peux quitter un ticket à tout moment avec le bouton **🚪 Quitter**. 3
 tickets au plus par personne, 4 personnes au plus par ticket.
