@@ -20,24 +20,30 @@ guide à chaque étape.
 Tout se passe sur Discord, avec Zie. Ne crée ni branche ni assignation à la
 main sur GitHub : Zie s'en charge.
 
-1. **Choisir** : dans `#tickets`, clique sur **Proposer** sous un ticket.
-   Tu entres dans le salon du ticket : sa description est en haut. Le ticket
-   est alors **💬 En discussion** : on décide ensemble de ce qu'on va coder
-   et de la façon de le faire.
-2. **Proposer** : explique dans le salon ce que tu as compris, ce que tu veux
-   faire et pourquoi, discutes-en avec les autres, puis clique sur
-   **🔔 Appeler le Maintainer**.
-3. **Coder** : une fois l'équipe validée, le ticket passe **🔵 En cours** :
-   Zie t'assigne et crée la branche. Les commandes git sont dans la carte en
-   haut du salon. Teste avec `make start` et `go test ./...` dans `backend/`.
-   Sur un ticket déjà en cours, clique sur **Rejoindre** : tu entres dans
+Chaque ticket passe par quatre étapes. Zie explique l'étape dans le salon du
+ticket quand il y entre, et le salon change de catégorie Discord :
+
+1. **💬 Discussion** (catégorie « 💬 Discussions »). Dans `#tickets`, clique
+   sur **Proposer** sous un ticket : tu entres dans son salon, avec sa
+   description en haut. On décide ensemble de ce qu'on va coder et de la
+   façon de le faire : explique ce que tu as compris, ce que tu veux faire et
+   pourquoi, et discutes-en avec le Maintainer et les autres. Quand c'est
+   clair, clique sur **🚀 Demander à coder** : le Maintainer valide.
+2. **🔵 Développement** (catégorie « 📂 Tickets en cours »). Zie t'assigne et
+   crée la branche. Les commandes git sont dans la carte en haut du salon
+   (`git clone` la première fois, puis `git fetch` et `git switch`). Code,
+   teste avec `make start` et `go test ./...` dans `backend/`, puis
+   `git push`. Sur un ticket déjà en cours, **Rejoindre** te fait entrer dans
    l'équipe tout de suite, tant qu'elle compte moins de 4 personnes.
-4. **Demander la relecture** : quand c'est prêt, clique sur
-   **📬 Demander la relecture** dans la carte : la PR s'ouvre avec
-   `Closes #42`. Si la CI est rouge ou si on te demande des changements, Zie te
-   prévient dans le salon.
-5. **Terminé** : le mainteneur fusionne, tu reçois un message privé et le
-   salon se ferme.
+3. **🟡 Relecture** (catégorie « 🟡 En relecture »). Quand c'est prêt, clique
+   sur **📬 Demander la relecture** : Zie ouvre la PR (avec `Closes #42`). Le
+   Maintainer lit le code sur GitHub et pose ses questions ou demande des
+   changements ; Zie te prévient dans le salon (CI rouge, changements
+   demandés, approbation). Corrige sur la même branche et fais un
+   `git push`.
+4. **🟢 Terminé**. Quand le Maintainer est d'accord avec l'équipe, il fusionne
+   depuis Discord : le ticket se ferme et chacun reçoit un message privé avec
+   les liens vers la PR et les changements.
 
 Tu peux quitter un ticket à tout moment avec le bouton **🚪 Quitter**. 3
 tickets au plus par personne, 4 personnes au plus par ticket.
