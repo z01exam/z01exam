@@ -20,15 +20,18 @@ guide à chaque étape.
 Tout se passe sur Discord, avec Zie. Ne crée ni branche ni assignation à la
 main sur GitHub : Zie s'en charge.
 
-1. **Choisir** : dans `#tickets`, clique sur **Proposer** sous un ticket (ou
-   **Demander à rejoindre** s'il est déjà lancé). Tu entres dans le salon du
-   ticket : sa description est en haut.
+1. **Choisir** : dans `#tickets`, clique sur **Proposer** sous un ticket.
+   Tu entres dans le salon du ticket : sa description est en haut. Le ticket
+   est alors **💬 En discussion** : on décide ensemble de ce qu'on va coder
+   et de la façon de le faire.
 2. **Proposer** : explique dans le salon ce que tu as compris, ce que tu veux
    faire et pourquoi, discutes-en avec les autres, puis clique sur
    **🔔 Appeler le Maintainer**.
-3. **Coder** : une fois l'équipe validée, Zie t'assigne et crée la branche.
-   Les commandes git sont dans la carte en haut du salon. Teste avec
-   `make start` et `go test ./...` dans `backend/`.
+3. **Coder** : une fois l'équipe validée, le ticket passe **🔵 En cours** :
+   Zie t'assigne et crée la branche. Les commandes git sont dans la carte en
+   haut du salon. Teste avec `make start` et `go test ./...` dans `backend/`.
+   Sur un ticket déjà en cours, clique sur **Rejoindre** : tu entres dans
+   l'équipe tout de suite, tant qu'elle compte moins de 4 personnes.
 4. **Demander la relecture** : quand c'est prêt, clique sur
    **📬 Demander la relecture** dans la carte : la PR s'ouvre avec
    `Closes #42`. Si la CI est rouge ou si on te demande des changements, Zie te
