@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -345,7 +347,6 @@ func (g *runGate) wrap(next http.Handler) http.Handler {
 		}
 		select {
 		case g.admitted <- struct{}{}:
-			defer func() { <-g.admitted }()
 		default:
 			WriteRunResponse(w, false, "Serveur occupé, réessayez plus tard.")
 			return
@@ -354,12 +355,45 @@ func (g *runGate) wrap(next http.Handler) http.Handler {
 		defer timer.Stop()
 		select {
 		case g.active <- struct{}{}:
-			defer func() { <-g.active }()
-			next.ServeHTTP(w, r)
 		case <-timer.C:
+			<-g.admitted
 			WriteRunResponse(w, false, "Serveur occupé, réessayez plus tard.")
-		case <-r.Context().Done():
 			return
+		case <-r.Context().Done():
+			<-g.admitted
+			return
+		}
+		// The worker owns both slots until Docker cleanup completes, even when the
+		// caller has timed out. It never writes to the real response after return.
+		ctx, cancel := context.WithTimeout(r.Context(), runTimeout())
+		defer cancel()
+		done := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			response := httptest.NewRecorder()
+			defer func() {
+				if recover() != nil {
+					response = httptest.NewRecorder()
+					WriteRunResponse(response, false, "Erreur système pendant l'exécution.")
+				}
+				<-g.active
+				<-g.admitted
+				done <- response
+			}()
+			next.ServeHTTP(response, r.WithContext(ctx))
+		}()
+		select {
+		case response := <-done:
+			for key, values := range response.Header() {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
+			w.WriteHeader(response.Code)
+			_, _ = w.Write(response.Body.Bytes())
+		case <-ctx.Done():
+			if r.Context().Err() == nil {
+				WriteRunResponse(w, false, "Temps limite dépassé.")
+			}
 		}
 	})
 }

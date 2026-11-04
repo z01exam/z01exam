@@ -144,3 +144,5 @@ valide les quatre moulinettes officielles. Enfin,
 Runner → Web et une soumission Go de bout en bout.
 
 Le Runner accepte par défaut trois exécutions simultanées (`RUNNER_MAX_ACTIVE`), six requêtes en attente (`RUNNER_MAX_QUEUE`) et une attente de 15 secondes (`RUNNER_QUEUE_WAIT_SECONDS`). Une surcharge retourne le JSON habituel avec `success: false`. Chaque exécution conserve au plus 1 Mio de sortie combinée ; les sorties supplémentaires sont consommées puis ignorées. `RUNNER_WORK_DIR` (par défaut `TMPDIR`) doit désigner un dossier absolu existant hors du checkout et accessible au daemon Docker rootless. Sous systemd avec `PrivateTmp=yes`, configurer un dossier partagé avec le daemon.
+
+L’expiration répond au navigateur sans attendre Docker. Une exécution conserve son emplacement jusqu’à confirmation de suppression du conteneur ; si la création échoue de manière ambiguë ou si Docker est indisponible, elle reste bloquée en sécurité et retente le nettoyage. Les images doivent être préchargées (`--pull=never`). Les conteneurs sont identifiés par le label `z01exam.managed=true` pour faciliter leur inspection après un redémarrage.

@@ -146,3 +146,70 @@ func TestWorkspaceRejectsCheckout(t *testing.T) {
 		t.Fatalf("workspace in %s", dir)
 	}
 }
+
+func TestHTTPTimeoutKeepsSlotUntilDockerCleanup(t *testing.T) {
+	for _, scenario := range []string{"blocked-create", "ambiguous-create"} {
+		t.Run(scenario, func(t *testing.T) {
+			bin := t.TempDir()
+			marker := filepath.Join(bin, "allow")
+			script := `#!/bin/sh
+case "$1" in
+create)
+  if [ "$SCENARIO" = blocked-create ]; then
+    while [ ! -f "$MARKER" ]; do sleep 0.05; done
+    echo id; exit 0
+  fi
+  echo 'connection lost' >&2; exit 1 ;;
+rm)
+  if [ ! -f "$MARKER" ]; then
+    if [ ! -f "$MARKER.attempted" ]; then
+      touch "$MARKER.attempted"; echo 'daemon unavailable' >&2; exit 1
+    fi
+    echo 'No such container' >&2; exit 1
+  fi
+  exit 0 ;;
+start) exit 0 ;;
+esac
+`
+			if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("MARKER", marker)
+			t.Setenv("SCENARIO", scenario)
+			t.Setenv("RUNNER_TIMEOUT_SECONDS", "1")
+			gate := &runGate{make(chan struct{}, 1), make(chan struct{}, 1), time.Second}
+			handler := gate.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _, err := runDocker(r.Context(), []string{"run", "--rm", "image"})
+				WriteRunResponse(w, err == nil, "finished")
+			}))
+			w := httptest.NewRecorder()
+			start := time.Now()
+			handler.ServeHTTP(w, httptest.NewRequest("POST", "/api/run", nil))
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Fatalf("HTTP timeout took %s", elapsed)
+			}
+			if !strings.Contains(w.Body.String(), "Temps limite") {
+				t.Fatalf("response: %s", w.Body.String())
+			}
+			if len(gate.active) != 1 || len(gate.admitted) != 1 {
+				t.Fatal("slot released before cleanup")
+			}
+			busy := httptest.NewRecorder()
+			handler.ServeHTTP(busy, httptest.NewRequest("POST", "/api/run", nil))
+			if !strings.Contains(busy.Body.String(), "occupé") {
+				t.Fatalf("expected backpressure: %s", busy.Body.String())
+			}
+			if err := os.WriteFile(marker, []byte("ok"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(4 * time.Second)
+			for len(gate.admitted) != 0 && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if len(gate.admitted) != 0 || len(gate.active) != 0 {
+				t.Fatal("slot not released after confirmed removal")
+			}
+		})
+	}
+}

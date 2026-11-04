@@ -69,15 +69,16 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 		return "", "", err
 	}
 	name := "z01exam-" + hex.EncodeToString(random[:])
-	createArgs := []string{"create", "--name", name}
+	createArgs := []string{"create", "--name", name, "--label", "z01exam.managed=true", "--pull=never"}
 	for _, arg := range args[1:] {
 		if arg != "--rm" {
 			createArgs = append(createArgs, arg)
 		}
 	}
-	// Wait for create to finish even after cancellation: killing the CLI can
-	// leave a daemon-side create still in flight after an attempted removal.
-	create := exec.Command("docker", createArgs...)
+	// A cancelled CLI can leave a daemon-side create in flight. Treat any
+	// failure as ambiguous and retain the lease until removal succeeds.
+	create := exec.CommandContext(ctx, "docker", createArgs...)
+	create.WaitDelay = time.Second
 	output := &dockerOutput{remaining: 1 << 20}
 	create.Stdout, create.Stderr = outputStream{output, false}, outputStream{output, true}
 	err := create.Run()
@@ -90,6 +91,8 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 	}
 	// Keep the admission slot until the named container is actually gone. This
 	// fails closed during a daemon outage rather than accumulating orphans.
+	// A failed create is ambiguous: only a successful removal proves cleanup;
+	// a "not found" response might precede a delayed daemon-side create.
 	for {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		cleanup := exec.CommandContext(cleanupCtx, "docker", "rm", "-f", name)
@@ -97,7 +100,7 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 		cleanup.Stdout, cleanup.Stderr = outputStream{diagnostic, false}, outputStream{diagnostic, true}
 		cleanupErr := cleanup.Run()
 		cleanupCancel()
-		if cleanupErr == nil || strings.Contains(diagnostic.stderr.String(), "No such container") || !created {
+		if cleanupErr == nil || (created && strings.Contains(diagnostic.stderr.String(), "No such container")) {
 			break
 		}
 		time.Sleep(time.Second)
