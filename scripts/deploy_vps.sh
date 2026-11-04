@@ -19,9 +19,15 @@ die() { printf '[deploy] erreur: %s\n' "$*" >&2; exit 1; }
 [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || die "SHA Git complet requis (argument 1 ou EXPECTED_SHA)"
 [[ -e "$APP_DIR/.git" ]] || die "dépôt introuvable: $APP_DIR"
 for cmd in git curl docker systemctl tar flock ss python3; do command -v "$cmd" >/dev/null || die "$cmd est requis"; done
-GO_BIN="${GO_BIN:-$(command -v go || true)}"
-if [[ -z "$GO_BIN" && -x /usr/local/go/bin/go ]]; then GO_BIN=/usr/local/go/bin/go; fi
+# Pin the supported compiler and do not silently accept an older PATH binary.
+if [[ -z "${GO_BIN:-}" ]]; then
+  GO_BIN="$(command -v go || true)"
+  if [[ -x /usr/local/go/bin/go ]] && ! GOTOOLCHAIN=local "$GO_BIN" version 2>/dev/null | grep -Eq 'go1\.(27\.([3-9]|[1-9][0-9]+)|2[89]\.|[3-9][0-9]\.)'; then
+    GO_BIN=/usr/local/go/bin/go
+  fi
+fi
 [[ -x "$GO_BIN" ]] || die "Go est requis"
+GOTOOLCHAIN=local "$GO_BIN" version | grep -Eq 'go1\.(27\.([3-9]|[1-9][0-9]+)|2[89]\.|[3-9][0-9]\.)' || die "Go 1.27.3 ou plus récent est requis"
 [[ "$PREVIEW_ADDR" =~ ^127\.0\.0\.1:([0-9]+)$ ]] || die "PREVIEW_ADDR doit être une adresse loopback 127.0.0.1:port"
 [[ "${BASH_REMATCH[1]}" -gt 0 && "${BASH_REMATCH[1]}" -lt 65536 ]] || die "port de préflight invalide"
 
@@ -101,7 +107,7 @@ read_service_env() {
     token="${token#\"}"; token="${token%\"}"
     [[ "$token" == *=* ]] || continue
     key="${token%%=*}"; value="${token#*=}"
-    [[ "$key" =~ ^(RUNNER_MODE|RUNNER_GO_DOCKER_IMAGE|RUNNER_JS_DOCKER_IMAGE|RUNNER_(PIDS_LIMIT|MEMORY|CPUS|TIMEOUT|TIMEOUT_SECONDS)|RUN_TIMEOUT|DOCKER_HOST|DOCKER_TIMEOUT)$ ]] || continue
+    [[ "$key" =~ ^(RUNNER_MODE|RUNNER_GO_DOCKER_IMAGE|RUNNER_JS_DOCKER_IMAGE|RUNNER_(PIDS_LIMIT|MEMORY|CPUS|TIMEOUT|TIMEOUT_SECONDS|WORK_DIR|MAX_ACTIVE|MAX_QUEUE|QUEUE_WAIT_SECONDS)|RUN_TIMEOUT|DOCKER_HOST|DOCKER_TIMEOUT)$ ]] || continue
     [[ "$value" != *[[:space:]]* ]] || die "valeur systemd non sûre pour $key"
     SERVICE_ENV+=("$key=$value")
   done
@@ -127,7 +133,7 @@ env -u DOCKER_CONTEXT "DOCKER_HOST=$DOCKER_HOST_VALUE" docker image inspect "$RU
 log "construction candidate monolith dans une release isolée"
 (
   cd "$RELEASE_DIR/backend"
-  TMPDIR="$DEPLOY_RUNTIME_DIR/tmp" GOCACHE="$DEPLOY_RUNTIME_DIR/cache" GOTMPDIR="$DEPLOY_RUNTIME_DIR/tmp" GOPATH="$DEPLOY_RUNTIME_DIR/gopath" "$GO_BIN" build -ldflags "-X Z02INTRA.BuildSHA=$EXPECTED_SHA" -o "$CANDIDATE_BIN" ./cmd/monolith
+  GOTOOLCHAIN=local TMPDIR="$DEPLOY_RUNTIME_DIR/tmp" GOCACHE="$DEPLOY_RUNTIME_DIR/cache" GOTMPDIR="$DEPLOY_RUNTIME_DIR/tmp" GOPATH="$DEPLOY_RUNTIME_DIR/gopath" "$GO_BIN" build -ldflags "-X Z02INTRA.BuildSHA=$EXPECTED_SHA" -o "$CANDIDATE_BIN" ./cmd/monolith
 )
 [[ -x "$CANDIDATE_BIN" ]] || die "binaire candidat non exécutable"
 

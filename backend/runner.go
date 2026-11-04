@@ -1,11 +1,9 @@
 package backend
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -21,7 +19,11 @@ var (
 // Exam. The image owns the test suite; this repository only prepares the
 // student workspace that its entrypoint expects at /go-tests/student.
 func RunExercise(ex Exercise, code string) (bool, string) {
-	studentDir, err := os.MkdirTemp(rootDir, "goexam-*")
+	return runExercise(context.Background(), ex, code)
+}
+
+func runExercise(ctx context.Context, ex Exercise, code string) (bool, string) {
+	studentDir, err := makeWorkspace("goexam-*")
 	if err != nil {
 		return false, "Erreur système: " + err.Error()
 	}
@@ -37,7 +39,7 @@ func RunExercise(ex Exercise, code string) (bool, string) {
 	if err := prepareOfficialGoStudentDir(studentDir, exerciseID, code); err != nil {
 		return false, "Erreur de préparation du code: " + err.Error()
 	}
-	stdout, stderr, runErr := RunOfficialGoDocker(goImageFor(ex), studentDir, exerciseID)
+	stdout, stderr, runErr := runOfficialGoDocker(ctx, goImageFor(ex), studentDir, exerciseID)
 	out := strings.TrimSpace(stdout + "\n" + stderr)
 
 	if runErr != nil {
@@ -92,21 +94,11 @@ func ensureTrailingNewline(code string) string {
 }
 
 func RunOfficialGoDocker(image, studentDir, exerciseID string) (string, string, error) {
-	timeout := runTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	return runOfficialGoDocker(context.Background(), image, studentDir, exerciseID)
+}
 
-	args := officialGoDockerArgsFor(image, studentDir, exerciseID)
-
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
-		return stdout.String(), stderr.String(), context.DeadlineExceeded
-	}
-	return stdout.String(), stderr.String(), err
+func runOfficialGoDocker(ctx context.Context, image, studentDir, exerciseID string) (string, string, error) {
+	return runDocker(ctx, officialGoDockerArgsFor(image, studentDir, exerciseID))
 }
 
 func officialGoDockerArgs(studentDir, exerciseID string) []string {

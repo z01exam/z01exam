@@ -2,7 +2,7 @@
 
 ## Objectif et compatibilité
 
-Le dépôt reste un monorepo Go 1.22. Quatre exécutables explicites démarrent les
+Le dépôt reste un monorepo Go 1.27.3. Quatre exécutables explicites démarrent les
 composants : `cmd/web`, `cmd/catalog`, `cmd/runner` et `cmd/monolith`. Le
 monolithe est conservé comme composition de compatibilité : il préserve les
 URL, le déploiement Render actuel et le comportement runtime pendant la
@@ -108,7 +108,7 @@ cd backend && \
 Les assets Web et les contenus source sont lus depuis le dépôt. Seul le
 Catalogue lit les énoncés et l'API Zone01 ; le Runner reçoit les métadonnées
 privées Rust/Java dans son snapshot. Le Runner a néanmoins besoin d'un espace
-inscriptible : il crée un dossier temporaire sous `rootDir` pour chaque requête
+inscriptible : il crée un dossier temporaire hors du répertoire public pour chaque requête
 puis le supprime. Aucun volume de soumission n'est partagé entre services.
 
 ## Migration et exploitation
@@ -142,3 +142,9 @@ exécutables avec `go test ./...`, `go vet ./...` et `go build ./cmd/...`.
 valide les quatre moulinettes officielles. Enfin,
 `./scripts/test_services_e2e.sh` vérifie la topologie réelle Catalogue →
 Runner → Web et une soumission Go de bout en bout.
+
+Le Runner accepte par défaut trois exécutions simultanées (`RUNNER_MAX_ACTIVE`), six requêtes en attente (`RUNNER_MAX_QUEUE`) et une attente de 15 secondes (`RUNNER_QUEUE_WAIT_SECONDS`). Une surcharge retourne le JSON habituel avec `success: false`. Chaque exécution conserve au plus 1 Mio de sortie combinée ; les sorties supplémentaires sont consommées puis ignorées. `RUNNER_WORK_DIR` (par défaut `TMPDIR`) doit désigner un dossier absolu existant hors du checkout et accessible au daemon Docker rootless. Sous systemd avec `PrivateTmp=yes`, configurer un dossier partagé avec le daemon.
+
+L’expiration répond au navigateur sans attendre Docker. Une exécution conserve son emplacement jusqu’à confirmation de suppression du conteneur ; si la création échoue de manière ambiguë ou si Docker est indisponible, elle reste bloquée en sécurité et retente le nettoyage. Les images doivent être préchargées (`--pull=never`). Les conteneurs sont identifiés par le label `z01exam.managed=true` pour faciliter leur inspection après un redémarrage.
+
+Au démarrage du Runner ou du monolithe en mode Docker, Docker doit être disponible avant ouverture du service. Un journal dans `RUNNER_WORK_DIR/.z01exam-lifecycle` enregistre chaque création avant son lancement. Les verrous permettent aux candidats et services actifs qui partagent ce répertoire de conserver leurs conteneurs ; les enregistrements d’un processus arrêté sont réconciliés avant le démarrage. Si la suppression ne peut être confirmée, y compris pour un conteneur introuvable après une création interrompue, le démarrage échoue en sécurité. Un opérateur doit vérifier l’état du daemon et des conteneurs `z01exam.managed=true`, résoudre toute création en cours, puis supprimer manuellement l’enregistrement concerné seulement après confirmation que le conteneur ne peut plus apparaître. Une erreur ambiguë en cours d’exécution conserve aussi son emplacement ; un redémarrage déclenche cette réconciliation. Ne pas partager le daemon entre runners utilisant des répertoires de travail distincts pour les mêmes conteneurs.
