@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -36,8 +35,12 @@ func newDockerLifecycle(workDir string) (*dockerLifecycle, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	locked, err := tryFileLock(lock)
+	if err != nil || !locked {
 		lock.Close()
+		if err == nil {
+			err = fmt.Errorf("verrou du propriétaire déjà utilisé")
+		}
 		return nil, err
 	}
 	l := &dockerLifecycle{owner: owner, dir: dir, lock: lock}
@@ -74,10 +77,14 @@ func (l *dockerLifecycle) reconcile() error {
 		return err
 	}
 	defer reconciliationLock.Close()
-	if err := syscall.Flock(int(reconciliationLock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return fmt.Errorf("réconciliation déjà en cours: %w", err)
+	locked, err := tryFileLock(reconciliationLock)
+	if err != nil {
+		return fmt.Errorf("verrou de réconciliation: %w", err)
 	}
-	defer syscall.Flock(int(reconciliationLock.Fd()), syscall.LOCK_UN)
+	if !locked {
+		return fmt.Errorf("réconciliation déjà en cours")
+	}
+	defer unlockFile(reconciliationLock)
 	// Verify readiness before accepting submissions, even if no old jobs exist.
 	if _, err := dockerMaintenance("info"); err != nil {
 		return err
@@ -104,14 +111,14 @@ func (l *dockerLifecycle) reconcile() error {
 		if err != nil {
 			return err
 		}
-		err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			lock.Close()
-			continue
-		}
+		locked, err := tryFileLock(lock)
 		if err != nil {
 			lock.Close()
 			return err
+		}
+		if !locked {
+			lock.Close()
+			continue
 		}
 		// Not-found is ambiguous after an interrupted create: fail closed rather
 		// than assume a daemon request cannot still materialize.
@@ -119,7 +126,7 @@ func (l *dockerLifecycle) reconcile() error {
 		if err == nil {
 			err = os.Remove(filepath.Join(l.dir, entry.Name()))
 		}
-		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		_ = unlockFile(lock)
 		_ = lock.Close()
 		if err != nil {
 			return fmt.Errorf("réconciliation %s: %w", parts[1], err)
@@ -152,17 +159,17 @@ func (l *dockerLifecycle) reconcile() error {
 		if err != nil {
 			return err
 		}
-		err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			lock.Close()
-			continue
-		}
+		locked, err := tryFileLock(lock)
 		if err != nil {
 			lock.Close()
 			return err
 		}
+		if !locked {
+			lock.Close()
+			continue
+		}
 		_, err = dockerMaintenance("rm", "-f", fields[0])
-		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		_ = unlockFile(lock)
 		_ = lock.Close()
 		if err != nil {
 			return err
