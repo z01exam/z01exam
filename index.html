@@ -29,6 +29,9 @@
                     <span>Java</span>
                 </label>
             </div>
+            <div id="true-exam-header" class="true-exam-clock" hidden>
+                <span id="true-exam-header-track">GO</span> · <span id="true-exam-timer" role="timer" aria-label="Temps restant">03:00:00</span>
+            </div>
             <div id="exam-title" class="exam-title">Sélectionne un exercice</div>
         </div>
         <div class="topbar-right">
@@ -55,13 +58,9 @@
         <!-- LEFT: énoncé -->
         <section class="left-panel">
             <div class="chips-label">Exercises</div>
-            <div class="true-exam-panel">
-                <div class="chips-label">True Exam</div>
-                <div class="true-exam-actions">
-                    <button id="true-exam-next" class="btn-small">next</button>
-                    <button id="true-exam-restart" class="btn-small">restart</button>
-                </div>
-                <div id="true-exam-status" class="true-exam-status"></div>
+            <div class="true-exam-actions" hidden>
+                <button id="true-exam-next" class="btn-small" hidden>next</button>
+                <button id="true-exam-restart" class="btn-small" hidden>restart</button>
             </div>
             <div class="filters">
                 <span class="filters-label">Niveau</span>
@@ -70,6 +69,17 @@
             <div id="exercise-chips" class="chips"></div>
 
             <div class="subject">
+                <section id="true-exam-preparation" aria-labelledby="true-exam-preparation-title" hidden>
+                    <h1 id="true-exam-preparation-title">True Exam</h1>
+                    <p class="true-exam-subtitle">Simulation de checkpoint</p>
+                    <p>Langage : <strong id="true-exam-preparation-track">GO</strong></p>
+                    <p>Durée : 3 heures.</p>
+                    <p>Une validation réussie est requise pour avancer.</p>
+                    <button id="true-exam-start" class="btn-run">Commencer l'examen</button>
+                    <p id="true-exam-status" class="true-exam-status" role="status"></p>
+                </section>
+                <div id="true-exam-expired" role="status" hidden></div>
+                <div id="true-exam-progress" class="true-exam-progress" hidden></div>
                 <div id="exercise-content" class="subject-box markdown-viewer">
                     Choisis un exercice pour afficher le contenu complet du README.
                 </div>
@@ -84,6 +94,7 @@
             <div class="editor-container">
                 <div class="editor-header">
                     <div id="editor-tab-label" class="editor-tab active">go main.go</div>
+                    <span id="true-exam-editor-hint" class="true-exam-editor-hint" hidden>Éditeur inactif avant le démarrage</span>
                 </div>
 
                 <div class="editor-box">

@@ -13,6 +13,15 @@ const trackSwitchEl = document.querySelector(".track-switch");
 const editorTabLabelEl = document.getElementById("editor-tab-label");
 const trueExamNextBtn = document.getElementById("true-exam-next");
 const trueExamRestartBtn = document.getElementById("true-exam-restart");
+const trueExamEditorHintEl = document.getElementById("true-exam-editor-hint");
+const trueExamProgressEl = document.getElementById("true-exam-progress");
+const trueExamStartBtn = document.getElementById("true-exam-start");
+const trueExamPreparationEl = document.getElementById("true-exam-preparation");
+const trueExamPreparationTrackEl = document.getElementById("true-exam-preparation-track");
+const trueExamHeaderEl = document.getElementById("true-exam-header");
+const trueExamHeaderTrackEl = document.getElementById("true-exam-header-track");
+const trueExamTimerEl = document.getElementById("true-exam-timer");
+const trueExamExpiredEl = document.getElementById("true-exam-expired");
 const trueExamStatusEl = document.getElementById("true-exam-status");
 const learningContentEl = document.getElementById("learning-content");
 const learningLessonsEl = document.getElementById("learning-lessons");
@@ -417,6 +426,11 @@ let currentLevelFilter = "all";
 let trueExamMode = false;
 let trueExamSeries = [];
 let trueExamIndex = -1;
+let exercisesLoaded = false;
+const TRUE_EXAM_DURATION_MS = 3 * 60 * 60 * 1000;
+let trueExamState = "ready";
+let trueExamSession = null;
+let trueExamTimerInterval = null;
 let previousLevelFilter = "all";
 let currentTrack = "go";
 let goDraft = "";
@@ -676,7 +690,8 @@ function updateTrackDependentUi() {
     }
 
     if (trueExamMode) {
-        startTrueExamSeries();
+        if (trueExamState !== "running") prepareTrueExam();
+        updateTrueExamControls();
     } else if (!learningMode) {
         renderLevelFilters();
         renderChips();
@@ -702,6 +717,11 @@ function updateTrackDependentUi() {
 }
 
 function setTrackMode(mode) {
+    if (trueExamMode && trueExamState === "running") {
+        refreshTrueExamTimer();
+        updateTrackLabel();
+        return;
+    }
     const normalized = (mode || "go").toString().toLowerCase();
     const nextTrack = normalized === "js" ? "js" : (normalized === "rust" ? "rust" : (normalized === "java" ? "java" : "go"));
     if (nextTrack === currentTrack) {
@@ -732,6 +752,17 @@ function setTrackMode(mode) {
 
 function setAppMode(mode) {
     const normalized = (mode || "exam").toString().toLowerCase();
+    if (trueExamMode && normalized === "true-exam") {
+        updateModeLabel();
+        return;
+    }
+    if (trueExamMode && trueExamState === "running") {
+        refreshTrueExamTimer();
+        if (trueExamState === "running" && !window.confirm("Quitter l’examen ? La session en cours sera terminée.")) {
+            updateModeLabel();
+            return;
+        }
+    }
     if (normalized === "learning") {
         setTrueExamMode(false);
         setLearningMode(true);
@@ -746,12 +777,88 @@ function setAppMode(mode) {
     setTrueExamMode(false);
 }
 
+function stopTrueExamTimer() {
+    if (trueExamTimerInterval !== null) clearInterval(trueExamTimerInterval);
+    trueExamTimerInterval = null;
+}
+
+function formatTrueExamTime(remainingMs) {
+    const seconds = Math.ceil(Math.max(0, remainingMs) / 1000);
+    return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+        .map(value => String(value).padStart(2, "0")).join(":");
+}
+
+function expireTrueExamSession() {
+    if (!trueExamSession || trueExamSession.expired) return;
+    trueExamSession.expired = true;
+    trueExamState = "finished";
+    stopTrueExamTimer();
+    trueExamExpiredEl.textContent = "Temps écoulé : l’examen est terminé.";
+    updateTrueExamControls();
+}
+
+function refreshTrueExamTimer() {
+    const remaining = trueExamSession ? Math.max(0, trueExamSession.endsAt - Date.now()) : TRUE_EXAM_DURATION_MS;
+    const display = formatTrueExamTime(remaining);
+    if (trueExamTimerEl.textContent !== display) trueExamTimerEl.textContent = display;
+    if (trueExamSession && remaining === 0) expireTrueExamSession();
+}
+
+// Future recovery must restore the complete series/code before passing its original timestamps here.
+function startTrueExamTimer(startedAt = Date.now(), endsAt = startedAt + TRUE_EXAM_DURATION_MS) {
+    stopTrueExamTimer();
+    trueExamSession = { startedAt, endsAt, track: currentTrack, expired: false };
+    trueExamState = "running";
+    trueExamExpiredEl.textContent = "";
+    refreshTrueExamTimer();
+    if (!trueExamSession.expired) trueExamTimerInterval = setInterval(refreshTrueExamTimer, 1000);
+}
+
+function resetTrueExamTimer() {
+    stopTrueExamTimer();
+    trueExamSession = null;
+    trueExamExpiredEl.textContent = "";
+    refreshTrueExamTimer();
+}
+
+function canRunTrueExam() {
+    if (!trueExamMode) return true;
+    refreshTrueExamTimer();
+    return trueExamState === "running" && !!trueExamSession && !trueExamSession.expired;
+}
+
+// Visibility changes refresh the clock; they never pause or extend the session.
+document.addEventListener("visibilitychange", () => {
+    if (trueExamMode && trueExamSession) refreshTrueExamTimer();
+});
+
 function updateTrueExamStatus(message) {
     if (!trueExamStatusEl) return;
     trueExamStatusEl.textContent = message || "";
 }
 
 function updateTrueExamControls() {
+    const running = trueExamMode && trueExamState === "running";
+    const preparing = trueExamMode && trueExamState === "ready";
+    codeEditorEl.disabled = preparing;
+    trueExamEditorHintEl.hidden = !preparing;
+    if (editorWrapperEl) editorWrapperEl.classList.toggle("is-inactive", preparing);
+    statementEl.hidden = preparing;
+    trueExamExpiredEl.hidden = !trueExamMode || trueExamState !== "finished";
+    trueExamProgressEl.hidden = !running;
+    trueExamProgressEl.textContent = running
+        ? `Exercice ${String(trueExamIndex + 1).padStart(2, "0")} / ${String(trueExamSeries.length).padStart(2, "0")}`
+        : "";
+    runBtn.disabled = trueExamMode && !running;
+    trackSwitchEl.hidden = running;
+    trackInputs.forEach(input => { input.disabled = running; });
+    trueExamHeaderEl.hidden = !running;
+    trueExamHeaderTrackEl.textContent = (trueExamSession?.track || currentTrack).toUpperCase();
+    trueExamPreparationEl.hidden = !preparing;
+    trueExamPreparationTrackEl.textContent = currentTrack.toUpperCase();
+    trueExamStartBtn.disabled = !trueExamMode || trueExamState !== "ready" || !hasTrueExamExercises();
+    trueExamNextBtn.hidden = true;
+    trueExamRestartBtn.hidden = true;
     if (!trueExamNextBtn || !trueExamRestartBtn) return;
     const hasSeries = trueExamSeries.length > 0;
     trueExamNextBtn.disabled = !trueExamMode || !hasSeries || trueExamIndex >= trueExamSeries.length - 1;
@@ -759,6 +866,7 @@ function updateTrueExamControls() {
 }
 
 function setTrueExamMode(enabled) {
+    if (!!enabled === trueExamMode) return;
     trueExamMode = !!enabled;
     if (appEl) {
         appEl.classList.toggle("true-exam-mode", trueExamMode);
@@ -768,7 +876,7 @@ function setTrueExamMode(enabled) {
 
     if (trueExamMode) {
         previousLevelFilter = currentLevelFilter;
-        startTrueExamSeries();
+        prepareTrueExam();
     } else {
         stopTrueExamSeries();
         currentLevelFilter = previousLevelFilter || "all";
@@ -796,15 +904,35 @@ function buildTrueExamSeries() {
     return series;
 }
 
+function hasTrueExamExercises() {
+    return exercisesLoaded && (!isJsTrack() || jsExercises.length > 0) && getTrackExercises().length > 0;
+}
+
+function prepareTrueExam() {
+    stopTrueExamSeries();
+    trueExamState = "ready";
+    currentExercise = null;
+    examTitleEl.textContent = "Préparation True Exam";
+    statementEl.textContent = "";
+    updateTrueExamStatus(hasTrueExamExercises() ? "" : "Exercices indisponibles ou en cours de chargement.");
+    updateTrueExamControls();
+    const panel = trueExamPreparationEl.closest(".left-panel");
+    if (panel) panel.scrollTop = 0;
+}
+
 function startTrueExamSeries() {
-    if (!trueExamMode) return;
-    trueExamSeries = buildTrueExamSeries();
+    if (!trueExamMode || trueExamState !== "ready") return;
+    resetTrueExamTimer();
+    const available = hasTrueExamExercises();
+    trueExamSeries = available ? buildTrueExamSeries() : [];
     trueExamIndex = trueExamSeries.length ? 0 : -1;
     renderChips();
 
     if (trueExamSeries.length) {
         updateTrueExamStatus(`Série démarrée (${trueExamSeries.length} exos).`);
+        trueExamState = "running";
         selectExercise(exId(trueExamSeries[0]));
+        startTrueExamTimer();
     } else {
         updateTrueExamStatus("Aucun exercice disponible pour lancer la série.");
         examTitleEl.textContent = "True Exam";
@@ -814,11 +942,14 @@ function startTrueExamSeries() {
 }
 
 function restartTrueExamSeries() {
-    if (!trueExamMode) return;
+    // Reserved for a future relaxed practice mode.
+    if (!trueExamMode || trueExamState !== "ready") return;
     startTrueExamSeries();
 }
 
 function stopTrueExamSeries() {
+    if (trueExamState === "running") trueExamState = "finished";
+    resetTrueExamTimer();
     trueExamSeries = [];
     trueExamIndex = -1;
     updateTrueExamStatus(trueExamMode ? "Série arrêtée." : "");
@@ -827,6 +958,8 @@ function stopTrueExamSeries() {
 }
 
 function nextTrueExamExercise() {
+    // Strict mode will advance only after validation in a later phase.
+    if (trueExamState === "running" || trueExamState === "finished") return;
     if (!trueExamMode || trueExamSeries.length === 0) return;
     if (trueExamIndex < trueExamSeries.length - 1) {
         trueExamIndex += 1;
@@ -1236,6 +1369,11 @@ async function loadExercises() {
             javaExercises = [];
             console.warn("Chargement des exercices Java impossible: HTTP", javaRes.status);
         }
+        exercisesLoaded = true;
+        if (trueExamMode) {
+            if (trueExamState === "ready") prepareTrueExam();
+            return;
+        }
         renderLevelFilters();
         renderChips();
         updateTrueExamControls();
@@ -1317,6 +1455,7 @@ function renderChips() {
 }
 
 function selectExercise(id) {
+    if (trueExamMode && (trueExamState !== "running" || exId(trueExamSeries[trueExamIndex] || {}) !== id)) return;
     const ex = getTrackExercises().find(e => exId(e) === id);
     if (!ex) return;
     currentExercise = ex;
@@ -1340,6 +1479,10 @@ function selectExercise(id) {
 }
 
 async function runCode() {
+    if (!canRunTrueExam()) return;
+    const session = trueExamSession;
+    // Ignore results/errors belonging to an expired, abandoned or restarted exam.
+    const acceptsResult = () => session === trueExamSession && canRunTrueExam();
     if (!currentExercise) {
         outputEl.textContent = "Sélectionne un exercice.";
         return;
@@ -1359,6 +1502,7 @@ async function runCode() {
         });
 
         const raw = await res.text();
+        if (!acceptsResult()) return;
 
         // Protection : backend mal formé ou planté
         let data;
@@ -1386,6 +1530,7 @@ async function runCode() {
             outputEl.textContent = out.trim() !== "" ? out : "Erreur inconnue (aucune sortie retournée).";
         }
     } catch (e) {
+        if (!acceptsResult()) return;
         outputEl.textContent = "Erreur réseau ou JS : " + e.message;
     }
 }
@@ -1394,6 +1539,7 @@ function clearConsole() {
     outputEl.textContent = "";
 }
 
+trueExamStartBtn.addEventListener("click", startTrueExamSeries);
 runBtn.addEventListener("click", runCode);
 clearBtn.addEventListener("click", clearConsole);
 if (modeInputs.length) {

@@ -517,56 +517,9 @@ body {
     margin-top: 6px;
 }
 
-.true-exam-panel {
-    display: none;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px;
-    border-radius: 10px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    min-height: 110px;
-    position: relative;
-    z-index: 10000;
-}
-
-.true-exam-actions {
-    display: flex;
-    gap: 6px;
-    order: 3;
-    margin-top: 4px;
-}
-
-.true-exam-actions .btn-small {
-    padding: 4px 14px;
-    border-radius: 18px;
-    font-size: 11px;
-}
-
-.true-exam-actions .btn-small[disabled] {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
 .true-exam-status {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--color-muted);
-}
-
-.true-exam-panel .chips-label {
-    font-size: 1.15rem;
-    font-weight: 600;
-    text-transform: none;
-    letter-spacing: 0;
-    color: var(--color-text);
-}
-
-.true-exam-status {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-text);
-    order: 2;
-    margin-top: -2px;
 }
 
 .filters {
@@ -610,10 +563,6 @@ body {
     font-size: 11px;
     color: var(--color-muted);
     margin-top: 6px;
-}
-
-.true-exam-mode .true-exam-panel {
-    display: flex;
 }
 
 .true-exam-mode .filters {
@@ -1021,3 +970,86 @@ body::before {
 }
 /* trame-background-end */
 /* z02intra-trame-end */
+
+.true-exam-clock {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Explicit visibility also overrides grid/flex display on the track selector. */
+[hidden] {
+    display: none !important;
+}
+
+#true-exam-preparation p {
+    margin-bottom: 8px;
+}
+
+@media (max-width: 900px) {
+    .topbar {
+        height: auto;
+        min-height: 48px;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+    }
+
+    .topbar-left {
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+}
+
+.true-exam-mode .subject {
+    margin-top: 0;
+    gap: 6px;
+}
+
+#true-exam-preparation {
+    padding: 8px 12px;
+    line-height: 1.5;
+}
+
+#true-exam-preparation h1 {
+    font-size: 1.75rem;
+    color: var(--color-text);
+}
+
+.true-exam-subtitle {
+    color: var(--color-muted);
+    margin-bottom: 20px;
+}
+
+#true-exam-start {
+    padding: 12px 22px;
+    margin: 12px 0;
+    font-size: 1rem;
+}
+
+.true-exam-progress {
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-muted);
+}
+
+.editor-wrapper.is-inactive {
+    opacity: 0.45;
+}
+
+.editor-wrapper.is-inactive textarea {
+    cursor: not-allowed;
+}
+
+.true-exam-editor-hint {
+    margin: 0 8px 4px;
+    font-size: 11px;
+    color: var(--color-muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
