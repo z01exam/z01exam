@@ -94,9 +94,9 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 	output := &dockerOutput{remaining: 1 << 20}
 	create.Stdout, create.Stderr = outputStream{output, false}, outputStream{output, true}
 	err := create.Run()
-	// A complete daemon response for a missing local image is definitive: no
+	// Recognized CLI validation and daemon rejections are definitive: no
 	// container was created. Transport failures and cancellation stay ambiguous.
-	if err != nil && ctx.Err() == nil && strings.HasPrefix(strings.TrimSpace(output.stderr.String()), "Error response from daemon: No such image:") {
+	if err != nil && ctx.Err() == nil && definitiveCreateFailure(output.stderr.String()) {
 		if record != "" {
 			if removeErr := os.Remove(record); removeErr != nil {
 				return "", "", removeErr
@@ -140,4 +140,21 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 		stderr += "\n[sortie tronquée]"
 	}
 	return stdout, stderr, err
+}
+
+// These messages are explicit CLI validation failures or daemon rejections,
+// not transport failures. Preserve quarantine for every unrecognized error.
+func definitiveCreateFailure(stderr string) bool {
+	message := strings.TrimSpace(stderr)
+	for _, prefix := range []string{
+		"Error response from daemon: No such image:",
+		"Error response from daemon: invalid reference format",
+		"docker: invalid reference format",
+		"unknown flag:", "unknown shorthand flag:",
+	} {
+		if strings.HasPrefix(message, prefix) {
+			return true
+		}
+	}
+	return false
 }

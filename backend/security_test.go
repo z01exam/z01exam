@@ -336,3 +336,16 @@ esac
 		}
 	}
 }
+
+func TestDefinitiveCreateFailureClassification(t *testing.T) {
+	for _, diagnostic := range []string{"Error response from daemon: No such image: x", "unknown flag: --bad", "unknown shorthand flag: 'x'", "Error response from daemon: invalid reference format"} {
+		if !definitiveCreateFailure(diagnostic) {
+			t.Errorf("definitive failure not recognized: %q", diagnostic)
+		}
+	}
+	for _, diagnostic := range []string{"connection reset by peer", "context deadline exceeded", "Error response from daemon: internal error", "No such container"} {
+		if definitiveCreateFailure(diagnostic) {
+			t.Errorf("ambiguous error treated as definitive: %q", diagnostic)
+		}
+	}
+}
