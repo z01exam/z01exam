@@ -58,7 +58,7 @@ func getenvDefault(key, def string) string {
 }
 
 // Reject TMPDIR under the served checkout, including through symlinks.
-func makeWorkspace(pattern string) (string, error) {
+func runnerWorkDir() (string, error) {
 	tempDir := getenvDefault("RUNNER_WORK_DIR", os.TempDir())
 	if !filepath.IsAbs(tempDir) {
 		return "", fmt.Errorf("RUNNER_WORK_DIR doit être absolu")
@@ -82,5 +82,13 @@ func makeWorkspace(pattern string) (string, error) {
 	if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 		return "", fmt.Errorf("répertoire temporaire dans le répertoire public")
 	}
-	return os.MkdirTemp(temp, pattern)
+	return temp, nil
+}
+
+func makeWorkspace(pattern string) (string, error) {
+	dir, err := runnerWorkDir()
+	if err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(dir, pattern)
 }

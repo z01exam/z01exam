@@ -213,3 +213,126 @@ esac
 		})
 	}
 }
+
+func TestLifecycleReconcilesDeadOwnersWithoutTouchingLiveJobs(t *testing.T) {
+	work := t.TempDir()
+	bin := t.TempDir()
+	log := filepath.Join(bin, "log")
+	fail := filepath.Join(bin, "fail")
+	script := `#!/bin/sh
+case "$1" in
+info) [ ! -f "$FAIL.info" ] ;;
+rm) echo "$3" >> "$LOG"; [ ! -f "$FAIL" ] ;;
+ps) [ ! -f "$FAIL.ps" ] || cat "$FAIL.ps" ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("LOG", log)
+	t.Setenv("FAIL", fail)
+	first, err := newDockerLifecycle(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "z01exam-" + strings.Repeat("a", 32)
+	record, err := first.record(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newDockerLifecycle(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(record); err != nil {
+		t.Fatal("live owner was reconciled")
+	}
+	if _, err := os.Stat(log); !os.IsNotExist(err) {
+		t.Fatal("removed a live owner's container")
+	}
+	_ = first.lock.Close()
+	if err := os.WriteFile(fail, []byte("fail"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newDockerLifecycle(work); err == nil {
+		t.Fatal("unconfirmed cleanup allowed startup")
+	}
+	if _, err := os.Stat(record); err != nil {
+		t.Fatal("unconfirmed record discarded")
+	}
+	if err := os.Remove(fail); err != nil {
+		t.Fatal(err)
+	}
+	third, err := newDockerLifecycle(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Fatal("dead owner record retained after removal")
+	}
+	listed := "aaaaaaaaaaaa " + second.owner + "\n" + "bbbbbbbbbbbb " + strings.Repeat("b", 32) + "\n"
+	if err := os.WriteFile(fail+".ps", []byte(listed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fourth, err := newDockerLifecycle(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains("\n"+string(calls), "\naaaaaaaaaaaa\n") || !strings.Contains("\n"+string(calls), "\nbbbbbbbbbbbb\n") {
+		t.Fatalf("unexpected managed-container cleanup: %s", calls)
+	}
+	_ = fourth.lock.Close()
+	if err := os.Remove(fail + ".ps"); err != nil {
+		t.Fatal(err)
+	}
+	_ = second.lock.Close()
+	_ = third.lock.Close()
+	if err := os.WriteFile(fail+".info", []byte("fail"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newDockerLifecycle(work); err == nil {
+		t.Fatal("unavailable Docker allowed startup")
+	}
+}
+
+func TestMissingImageDoesNotQuarantineSlot(t *testing.T) {
+	bin := t.TempDir()
+	work := t.TempDir()
+	script := `#!/bin/sh
+case "$1" in
+info|ps) exit 0 ;;
+create) echo 'Error response from daemon: No such image: missing' >&2; exit 1 ;;
+rm) exit 1 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	old := lifecycle
+	defer func() { lifecycle = old }()
+	var err error
+	lifecycle, err = newDockerLifecycle(work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lifecycle.lock.Close()
+	_, stderr, err := runDocker(context.Background(), []string{"run", "--rm", "missing"})
+	if err == nil || !strings.Contains(stderr, "No such image") {
+		t.Fatalf("unexpected create result: %q %v", stderr, err)
+	}
+	entries, err := os.ReadDir(lifecycle.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".job") {
+			t.Fatal("missing image left a quarantined job")
+		}
+	}
+}

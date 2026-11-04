@@ -49,6 +49,16 @@ func Run(mode string) error {
 	if err := initialize(mode); err != nil {
 		return err
 	}
+	if (mode == serviceModeRunner || mode == serviceModeMonolith) && strings.EqualFold(strings.TrimSpace(os.Getenv("RUNNER_MODE")), "docker") {
+		workDir, err := runnerWorkDir()
+		if err != nil {
+			return fmt.Errorf("répertoire Runner: %w", err)
+		}
+		lifecycle, err = newDockerLifecycle(workDir)
+		if err != nil {
+			return fmt.Errorf("initialisation Docker Runner: %w", err)
+		}
+	}
 	mux, err := newServiceMux(mode)
 	if err != nil {
 		return err

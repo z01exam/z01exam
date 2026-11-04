@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -69,7 +70,18 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 		return "", "", err
 	}
 	name := "z01exam-" + hex.EncodeToString(random[:])
+	var record string
+	if lifecycle != nil {
+		var err error
+		record, err = lifecycle.record(name)
+		if err != nil {
+			return "", "", err
+		}
+	}
 	createArgs := []string{"create", "--name", name, "--label", "z01exam.managed=true", "--pull=never"}
+	if lifecycle != nil {
+		createArgs = append(createArgs, "--label", "z01exam.owner="+lifecycle.owner)
+	}
 	for _, arg := range args[1:] {
 		if arg != "--rm" {
 			createArgs = append(createArgs, arg)
@@ -82,6 +94,16 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 	output := &dockerOutput{remaining: 1 << 20}
 	create.Stdout, create.Stderr = outputStream{output, false}, outputStream{output, true}
 	err := create.Run()
+	// A complete daemon response for a missing local image is definitive: no
+	// container was created. Transport failures and cancellation stay ambiguous.
+	if err != nil && ctx.Err() == nil && strings.HasPrefix(strings.TrimSpace(output.stderr.String()), "Error response from daemon: No such image:") {
+		if record != "" {
+			if removeErr := os.Remove(record); removeErr != nil {
+				return "", "", removeErr
+			}
+		}
+		return output.stdout.String(), output.stderr.String(), err
+	}
 	created := err == nil
 	if created && ctx.Err() == nil {
 		output = &dockerOutput{remaining: 1 << 20}
@@ -104,6 +126,11 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 			break
 		}
 		time.Sleep(time.Second)
+	}
+	if record != "" {
+		if removeErr := os.Remove(record); removeErr != nil {
+			return "", "", removeErr
+		}
 	}
 	if ctx.Err() != nil {
 		err = ctx.Err()
