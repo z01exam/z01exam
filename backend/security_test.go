@@ -28,7 +28,7 @@ func TestStaticAllowlist(t *testing.T) {
 	if err := os.Symlink(filepath.Join(rootDir, "backend/main.go"), filepath.Join(rootDir, "learning-content/link.md")); err != nil {
 		t.Fatal(err)
 	}
-	for path, status := range map[string]int{"/": 200, "/exam": 200, "/app.js": 200, "/learning-content/lesson.md": 200, "/learning-content/manifest.json": 200, "/Js_exam_instructions/test.md": 200, "/backend": 404, "/backend/main.go": 404, "/.git/config": 404, "/server": 404, "/learning-content/link.md": 404, "/learning-content/missing.md": 404} {
+	for path, status := range map[string]int{"/": 200, "/exam": 200, "/session/exam": 200, "/backend/nonexistent": 404, "/app.js": 200, "/learning-content/lesson.md": 200, "/learning-content/manifest.json": 200, "/Js_exam_instructions/test.md": 200, "/backend": 404, "/backend/main.go": 404, "/.git/config": 404, "/server": 404, "/learning-content/link.md": 404, "/learning-content/missing.md": 404} {
 		w := httptest.NewRecorder()
 		handleStatic(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != status {
@@ -83,7 +83,7 @@ func TestDockerOutputBoundAndCancellation(t *testing.T) {
 	log := filepath.Join(bin, "log")
 	script := `#!/bin/sh
 case "$1" in
-create) echo "$3" > "$LOG"; echo id ;;
+create) echo "$3" > "$LOG"; if [ "$SLOW_CREATE" = 1 ]; then sleep 0.3; fi; echo id ;;
 start) head -c 2097152 /dev/zero | tr '\000' x; if [ "$HANG" = 1 ]; then exec sleep 30; fi ;;
 rm) echo "$3" >> "$LOG" ;;
 esac
@@ -104,6 +104,14 @@ esac
 	if err != context.DeadlineExceeded {
 		t.Fatalf("cancellation: %v", err)
 	}
+	t.Setenv("HANG", "0")
+	t.Setenv("SLOW_CREATE", "1")
+	createCtx, createCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer createCancel()
+	_, _, err = runDocker(createCtx, []string{"run", "--rm", "image"})
+	if err != context.DeadlineExceeded {
+		t.Fatalf("create cancellation: %v", err)
+	}
 	data, e := os.ReadFile(log)
 	if e != nil {
 		t.Fatal(e)
@@ -111,5 +119,30 @@ esac
 	lines := strings.Fields(string(data))
 	if len(lines) != 2 || lines[0] != lines[1] || !strings.HasPrefix(lines[0], "z01exam-") {
 		t.Fatalf("container cleanup: %q", data)
+	}
+}
+
+func TestWorkspaceRejectsCheckout(t *testing.T) {
+	old := rootDir
+	rootDir = t.TempDir()
+	defer func() { rootDir = old }()
+	t.Setenv("RUNNER_WORK_DIR", rootDir)
+	if dir, err := makeWorkspace("job-*"); err == nil {
+		os.RemoveAll(dir)
+		t.Fatal("workspace created in public checkout")
+	}
+	outside := t.TempDir()
+	t.Setenv("RUNNER_WORK_DIR", outside)
+	dir, err := makeWorkspace("job-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	outside, err = filepath.EvalSymlinks(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(dir) != outside {
+		t.Fatalf("workspace in %s", dir)
 	}
 }

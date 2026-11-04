@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"os/exec"
 	"strings"
 	"sync"
@@ -62,6 +61,9 @@ func (w outputStream) Write(p []byte) (int, error) {
 func runDocker(parent context.Context, args []string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(parent, runTimeout())
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
 	var random [16]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return "", "", err
@@ -73,30 +75,35 @@ func runDocker(parent context.Context, args []string) (string, string, error) {
 			createArgs = append(createArgs, arg)
 		}
 	}
-	create := exec.CommandContext(ctx, "docker", createArgs...)
+	// Wait for create to finish even after cancellation: killing the CLI can
+	// leave a daemon-side create still in flight after an attempted removal.
+	create := exec.Command("docker", createArgs...)
 	output := &dockerOutput{remaining: 1 << 20}
 	create.Stdout, create.Stderr = outputStream{output, false}, outputStream{output, true}
 	err := create.Run()
-	if err == nil {
+	created := err == nil
+	if created && ctx.Err() == nil {
 		output = &dockerOutput{remaining: 1 << 20}
 		start := exec.CommandContext(ctx, "docker", "start", "--attach", name)
 		start.Stdout, start.Stderr = outputStream{output, false}, outputStream{output, true}
 		err = start.Run()
 	}
-	var cleanupErr error
-	for i := 0; i < 3; i++ {
+	// Keep the admission slot until the named container is actually gone. This
+	// fails closed during a daemon outage rather than accumulating orphans.
+	for {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		cleanupErr = exec.CommandContext(cleanupCtx, "docker", "rm", "-f", name).Run()
+		cleanup := exec.CommandContext(cleanupCtx, "docker", "rm", "-f", name)
+		diagnostic := &dockerOutput{remaining: 4096}
+		cleanup.Stdout, cleanup.Stderr = outputStream{diagnostic, false}, outputStream{diagnostic, true}
+		cleanupErr := cleanup.Run()
 		cleanupCancel()
-		if cleanupErr == nil || ctx.Err() == nil {
+		if cleanupErr == nil || strings.Contains(diagnostic.stderr.String(), "No such container") || !created {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Second)
 	}
 	if ctx.Err() != nil {
 		err = ctx.Err()
-	} else if cleanupErr != nil && err == nil {
-		err = fmt.Errorf("nettoyage du conteneur échoué: %w", cleanupErr)
 	}
 	stdout, stderr := output.stdout.String(), output.stderr.String()
 	if output.truncated {

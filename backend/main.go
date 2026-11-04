@@ -296,7 +296,9 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "Js_exam_instructions/") || strings.HasPrefix(path, "js_exam_instructions/") {
 		allowed = filepath.Ext(path) == ".md"
 	}
-	if path == "" || (!strings.Contains(path, ".") && !strings.Contains(path, "/") && !DirExists(filepath.Join(rootDir, path)) && !FileExists(filepath.Join(rootDir, path))) {
+	first := strings.SplitN(path, "/", 2)[0]
+	privateDir := first != "" && DirExists(filepath.Join(rootDir, first))
+	if path == "" || (!strings.Contains(path, ".") && !privateDir && !FileExists(filepath.Join(rootDir, path))) {
 		path = "index.html"
 		allowed = true
 	}
