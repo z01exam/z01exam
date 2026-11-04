@@ -30,6 +30,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
+        with:
+          sparse-checkout: backend
       - uses: actions/setup-go@v7
         with:
           go-version: '1.27.3'
