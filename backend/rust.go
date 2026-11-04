@@ -1,13 +1,11 @@
 package backend
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -113,7 +111,11 @@ func rustStatementPlaceholder(subject string) string {
 }
 
 func RunRustExercise(ex Exercise, code string) (bool, string) {
-	dir, err := os.MkdirTemp(rootDir, "rustexam-*")
+	return runRustExercise(context.Background(), ex, code)
+}
+
+func runRustExercise(ctx context.Context, ex Exercise, code string) (bool, string) {
+	dir, err := makeWorkspace("rustexam-*")
 	if err != nil {
 		return false, "Erreur système: " + err.Error()
 	}
@@ -122,8 +124,6 @@ func RunRustExercise(ex Exercise, code string) (bool, string) {
 	if err := prepareRustStudentDir(dir, ex, code); err != nil {
 		return false, "Erreur de préparation Rust: " + err.Error()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
-	defer cancel()
 	image := pinnedImage(ex.Image)
 	if image == "" {
 		image = officialRustCheckpointImage
@@ -134,13 +134,10 @@ func RunRustExercise(ex Exercise, code string) (bool, string) {
 	// Mount the temporary workspace as that student folder, rather than over
 	// the image's own /app directory (which also contains the official tests).
 	args = append(args, "-w", "/app/student", "-v", dir+":/app/student/student:rw", "-e", "EXERCISE="+ex.Runner, image)
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err = cmd.Run()
-	out := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
-	if ctx.Err() == context.DeadlineExceeded {
-		return false, "Temps limite dépassé."
+	stdout, stderr, err := runDocker(ctx, args)
+	out := strings.TrimSpace(stdout + "\n" + stderr)
+	if err == context.DeadlineExceeded || err == context.Canceled {
+		return false, "Temps limite dépassé ou exécution annulée."
 	}
 	if err != nil {
 		if out == "" {

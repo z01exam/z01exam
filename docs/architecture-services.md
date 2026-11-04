@@ -2,7 +2,7 @@
 
 ## Objectif et compatibilité
 
-Le dépôt reste un monorepo Go 1.22. Quatre exécutables explicites démarrent les
+Le dépôt reste un monorepo Go 1.27.3. Quatre exécutables explicites démarrent les
 composants : `cmd/web`, `cmd/catalog`, `cmd/runner` et `cmd/monolith`. Le
 monolithe est conservé comme composition de compatibilité : il préserve les
 URL, le déploiement Render actuel et le comportement runtime pendant la
@@ -108,7 +108,7 @@ cd backend && \
 Les assets Web et les contenus source sont lus depuis le dépôt. Seul le
 Catalogue lit les énoncés et l'API Zone01 ; le Runner reçoit les métadonnées
 privées Rust/Java dans son snapshot. Le Runner a néanmoins besoin d'un espace
-inscriptible : il crée un dossier temporaire sous `rootDir` pour chaque requête
+inscriptible : il crée un dossier temporaire hors du répertoire public pour chaque requête
 puis le supprime. Aucun volume de soumission n'est partagé entre services.
 
 ## Migration et exploitation
@@ -142,3 +142,5 @@ exécutables avec `go test ./...`, `go vet ./...` et `go build ./cmd/...`.
 valide les quatre moulinettes officielles. Enfin,
 `./scripts/test_services_e2e.sh` vérifie la topologie réelle Catalogue →
 Runner → Web et une soumission Go de bout en bout.
+
+Le Runner accepte par défaut trois exécutions simultanées (`RUNNER_MAX_ACTIVE`), six requêtes en attente (`RUNNER_MAX_QUEUE`) et une attente de 15 secondes (`RUNNER_QUEUE_WAIT_SECONDS`). Une surcharge retourne le JSON habituel avec `success: false`. Chaque exécution conserve au plus 1 Mio de sortie combinée ; les sorties supplémentaires sont consommées puis ignorées. `RUNNER_WORK_DIR` (par défaut `TMPDIR`) doit désigner un dossier absolu existant hors du checkout et accessible au daemon Docker rootless. Sous systemd avec `PrivateTmp=yes`, configurer un dossier partagé avec le daemon.

@@ -1,11 +1,9 @@
 package backend
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -13,7 +11,11 @@ import (
 )
 
 func RunJSExercise(ex Exercise, code string) (bool, string) {
-	tmpDir, err := os.MkdirTemp(rootDir, "jsexam-*")
+	return runJSExercise(context.Background(), ex, code)
+}
+
+func runJSExercise(ctx context.Context, ex Exercise, code string) (bool, string) {
+	tmpDir, err := makeWorkspace("jsexam-*")
 	if err != nil {
 		return false, "Erreur système tmpDir: " + err.Error()
 	}
@@ -38,12 +40,12 @@ func RunJSExercise(ex Exercise, code string) (bool, string) {
 	if !strings.HasPrefix(exerciseName, "js-") {
 		exerciseName = "js-" + exerciseName
 	}
-	stdout, stderr, runErr := RunJSDocker(tmpDir, exerciseName, fileName)
+	stdout, stderr, runErr := runJSDocker(ctx, tmpDir, exerciseName, fileName)
 	out := strings.TrimSpace(stdout + stderr)
 	out = normalizeJSStudentOutput(out)
 	out = remapJSStudentReference(out, exerciseName)
 	if strings.Contains(out, "SyntaxError") && !strings.Contains(out, "Ligne élève:") {
-		if syntaxRef := syntaxLocationFromDockerCheck(tmpDir, fileName); syntaxRef != "" {
+		if syntaxRef := syntaxLocationFromDockerCheck(ctx, tmpDir, fileName); syntaxRef != "" {
 			out = strings.TrimSpace(out + "\n" + syntaxRef)
 		}
 	}
@@ -62,10 +64,10 @@ func RunJSExercise(ex Exercise, code string) (bool, string) {
 }
 
 func RunJSDocker(studentDir, exerciseID, expectedFiles string) (string, string, error) {
-	timeout := runTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	return runJSDocker(context.Background(), studentDir, exerciseID, expectedFiles)
+}
 
+func runJSDocker(ctx context.Context, studentDir, exerciseID, expectedFiles string) (string, string, error) {
 	image := jsRunnerImage()
 	cmdArgs := []string{
 		"run", "--rm",
@@ -84,16 +86,7 @@ func RunJSDocker(studentDir, exerciseID, expectedFiles string) (string, string, 
 	}
 	cmdArgs = append(cmdArgs, image)
 
-	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-	err := cmd.Run()
-
-	if ctx.Err() == context.DeadlineExceeded {
-		return outBuf.String(), errBuf.String(), context.DeadlineExceeded
-	}
-	return outBuf.String(), errBuf.String(), err
+	return runDocker(ctx, cmdArgs)
 }
 
 func normalizeJSStudentOutput(out string) string {
@@ -200,10 +193,7 @@ func normalizeJSStudentOutput(out string) string {
 	return strings.Join(short, "\n")
 }
 
-func syntaxLocationFromDockerCheck(studentDir, fileName string) string {
-	timeout := runTimeout()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+func syntaxLocationFromDockerCheck(ctx context.Context, studentDir, fileName string) string {
 
 	image := jsRunnerImage()
 	target := "/jail/student/" + filepath.Base(fileName)
@@ -215,13 +205,8 @@ func syntaxLocationFromDockerCheck(studentDir, fileName string) string {
 		"--check", target,
 	)
 
-	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-	_ = cmd.Run()
-
-	raw := strings.TrimSpace(outBuf.String() + "\n" + errBuf.String())
+	stdout, stderr, _ := runDocker(ctx, cmdArgs)
+	raw := strings.TrimSpace(stdout + "\n" + stderr)
 	if raw == "" {
 		return ""
 	}

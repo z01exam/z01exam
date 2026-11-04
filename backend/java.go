@@ -1,10 +1,8 @@
 package backend
 
 import (
-	"bytes"
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -97,7 +95,11 @@ func javaStatementPlaceholder(subject string) string {
 }
 
 func RunJavaExercise(ex Exercise, code string) (bool, string) {
-	dir, err := os.MkdirTemp(rootDir, "javaexam-*")
+	return runJavaExercise(context.Background(), ex, code)
+}
+
+func runJavaExercise(ctx context.Context, ex Exercise, code string) (bool, string) {
+	dir, err := makeWorkspace("javaexam-*")
 	if err != nil {
 		return false, "Erreur système: " + err.Error()
 	}
@@ -106,8 +108,6 @@ func RunJavaExercise(ex Exercise, code string) (bool, string) {
 	if err := prepareJavaStudentDir(dir, ex, code); err != nil {
 		return false, "Erreur de préparation Java: " + err.Error()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
-	defer cancel()
 	image := pinnedImage(ex.Image)
 	if image == "" {
 		image = officialJavaModuleImage
@@ -115,13 +115,10 @@ func RunJavaExercise(ex Exercise, code string) (bool, string) {
 	args := append([]string{"run", "--rm", "--platform", "linux/amd64"}, baseDockerRunArgs("")...)
 	args = withOptionalCPULimit(args)
 	args = append(args, "-v", dir+":/app/student:rw", "-e", "EXERCISE="+ex.Runner, image)
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err = cmd.Run()
-	out := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
-	if ctx.Err() == context.DeadlineExceeded {
-		return false, "Temps limite dépassé."
+	stdout, stderr, err := runDocker(ctx, args)
+	out := strings.TrimSpace(stdout + "\n" + stderr)
+	if err == context.DeadlineExceeded || err == context.Canceled {
+		return false, "Temps limite dépassé ou exécution annulée."
 	}
 	if err != nil {
 		if out == "" {

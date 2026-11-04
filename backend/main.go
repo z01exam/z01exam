@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -163,13 +165,13 @@ func newServiceMux(mode string) (*http.ServeMux, error) {
 	switch mode {
 	case serviceModeMonolith:
 		mux.HandleFunc("/api/exercises", handleExercises)
-		mux.HandleFunc("/api/run", handleRun)
+		mux.Handle("/api/run", newRunGate().wrap(http.HandlerFunc(handleRun)))
 		mux.HandleFunc("/", handleStatic)
 	case serviceModeCatalog:
 		mux.HandleFunc("/api/exercises", handleExercises)
 		mux.HandleFunc("/internal/runner-catalog", handleRunnerCatalog)
 	case serviceModeRunner:
-		mux.HandleFunc("/api/run", handleRun)
+		mux.Handle("/api/run", newRunGate().wrap(http.HandlerFunc(handleRun)))
 	case serviceModeWeb:
 		catalogProxy, err := serviceProxy("CATALOG_SERVICE_URL")
 		if err != nil {
@@ -240,7 +242,7 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RunRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		WriteRunResponse(w, false, "Requête invalide: "+err.Error())
 		return
 	}
@@ -251,21 +253,21 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 
 	ex := FindExercise(exercises, req.ExerciseID)
 	if ex != nil {
-		ok, out := RunExercise(*ex, req.Code)
+		ok, out := runExercise(r.Context(), *ex, req.Code)
 		WriteRunResponse(w, ok, out)
 		return
 	}
 
 	jsEx := FindExercise(jsExercises, req.ExerciseID)
 	if jsEx != nil {
-		ok, out := RunJSExercise(*jsEx, req.Code)
+		ok, out := runJSExercise(r.Context(), *jsEx, req.Code)
 		WriteRunResponse(w, ok, out)
 		return
 	}
 
 	rustEx := FindExercise(rustExercises, req.ExerciseID)
 	if rustEx != nil {
-		ok, out := RunRustExercise(*rustEx, req.Code)
+		ok, out := runRustExercise(r.Context(), *rustEx, req.Code)
 		WriteRunResponse(w, ok, out)
 		return
 	}
@@ -275,26 +277,89 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 		WriteRunResponse(w, false, "Exercice inconnu: "+req.ExerciseID)
 		return
 	}
-	ok, out := RunJavaExercise(*javaEx, req.Code)
+	ok, out := runJavaExercise(r.Context(), *javaEx, req.Code)
 	WriteRunResponse(w, ok, out)
 }
 
 func handleStatic(w http.ResponseWriter, r *http.Request) {
-	requested := filepath.Clean(r.URL.Path)
-	requested = strings.TrimPrefix(requested, "/")
-	if requested == "" {
-		requested = "index.html"
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	for _, part := range strings.Split(path, "/") {
+		if strings.HasPrefix(part, ".") {
+			http.NotFound(w, r)
+			return
+		}
 	}
-	if strings.HasPrefix(requested, "..") {
+	allowed := path == "index.html" || path == "app.js" || path == "version.js" || path == "style.css" || path == "blank.css"
+	if strings.HasPrefix(path, "learning-content/") {
+		allowed = filepath.Ext(path) == ".md" || path == "learning-content/manifest.json"
+	}
+	if strings.HasPrefix(path, "Js_exam_instructions/") || strings.HasPrefix(path, "js_exam_instructions/") {
+		allowed = filepath.Ext(path) == ".md"
+	}
+	if path == "" || (!strings.Contains(path, ".") && !strings.Contains(path, "/") && !DirExists(filepath.Join(rootDir, path)) && !FileExists(filepath.Join(rootDir, path))) {
+		path = "index.html"
+		allowed = true
+	}
+	if !allowed {
 		http.NotFound(w, r)
 		return
 	}
-
-	target := filepath.Join(rootDir, requested)
-	if !FileExists(target) {
-		target = filepath.Join(rootDir, "index.html")
+	target := filepath.Join(rootDir, path)
+	resolved, err := filepath.EvalSymlinks(target)
+	root, rootErr := filepath.EvalSymlinks(rootDir)
+	if rootErr == nil && resolved != filepath.Join(root, path) {
+		http.NotFound(w, r)
+		return
 	}
-	http.ServeFile(w, r, target)
+	if err != nil || rootErr != nil || !strings.HasPrefix(resolved, root+string(filepath.Separator)) || !FileExists(resolved) {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, resolved)
+}
+
+type runGate struct {
+	admitted, active chan struct{}
+	wait             time.Duration
+}
+
+func positiveEnv(name string, fallback int) int {
+	n, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || n <= 0 || n > 1000 {
+		return fallback
+	}
+	return n
+}
+func newRunGate() *runGate {
+	active := positiveEnv("RUNNER_MAX_ACTIVE", 3)
+	queue := positiveEnv("RUNNER_MAX_QUEUE", 6)
+	return &runGate{make(chan struct{}, active+queue), make(chan struct{}, active), time.Duration(positiveEnv("RUNNER_QUEUE_WAIT_SECONDS", 15)) * time.Second}
+}
+func (g *runGate) wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			next.ServeHTTP(w, r)
+			return
+		}
+		select {
+		case g.admitted <- struct{}{}:
+			defer func() { <-g.admitted }()
+		default:
+			WriteRunResponse(w, false, "Serveur occupé, réessayez plus tard.")
+			return
+		}
+		timer := time.NewTimer(g.wait)
+		defer timer.Stop()
+		select {
+		case g.active <- struct{}{}:
+			defer func() { <-g.active }()
+			next.ServeHTTP(w, r)
+		case <-timer.C:
+			WriteRunResponse(w, false, "Serveur occupé, réessayez plus tard.")
+		case <-r.Context().Done():
+			return
+		}
+	})
 }
 
 func resolveJSInstructionsDir(root string) string {

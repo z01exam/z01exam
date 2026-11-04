@@ -25,6 +25,7 @@ cat >/dev/null; while [[ $# -gt 0 ]]; do [[ "$1" == -C ]] && { mkdir -p "$2/back
 EOF
   cat >"$bin/go" <<'EOF'
 #!/usr/bin/env bash
+[[ "${1:-}" != version ]] || { echo "go version go1.27.3 linux/amd64"; exit; }
 while [[ $# -gt 0 ]]; do [[ "$1" == -o ]] && { printf '#!/usr/bin/env bash\nexec sleep 60\n' >"$2"; chmod +x "$2"; exit; }; shift; done; exit 1
 EOF
   cat >"$bin/systemctl" <<'EOF'
