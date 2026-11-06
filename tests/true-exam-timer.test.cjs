@@ -270,7 +270,7 @@ test('leaving for Exam or Learning asks once; cancellation preserves session and
         assert.equal(s.intervals.size, 0);
     }
 });
-test('manual progression stays blocked and success leaves the current exercise active', async () => {
+test('manual progression stays blocked and accepted success advances to the next exercise', async () => {
     const s = setup();
     s.run('available = [{id: "test"}, {id: "second"}]; startTrueExamSeries()');
     s.run('nextTrueExamExercise(); restartTrueExamSeries(); selectExercise("second")');
@@ -278,8 +278,8 @@ test('manual progression stays blocked and success leaves the current exercise a
     assert.equal(s.run('trueExamIndex'), 0);
     s.context.fetch = async () => ({ ok: true, text: async () => '{"success":true}' });
     await s.run('runCode()');
-    assert.equal(s.run('currentExercise.id'), 'test');
-    assert.equal(s.run('trueExamIndex'), 0);
+    assert.equal(s.run('currentExercise.id'), 'second');
+    assert.equal(s.run('trueExamIndex'), 1);
     s.advance(10800000);
     s.run('refreshTrueExamTimer()');
     assert.equal(s.run('trueExamState'), 'finished');
@@ -960,7 +960,7 @@ async function evaluate(s, success, index = null) {
 test('early submission preserves actual evaluations and renders mutually exclusive full-screen results', async () => {
     const s = reportExam();
     await evaluate(s, true);
-    assert.equal(s.run('trueExamIndex'), 0); // Still no automatic progression.
+    assert.equal(s.run('trueExamIndex'), 1); // Success advanced exactly one exercise.
     await evaluate(s, false, 1);
     s.advance(125000);
     s.run('submitTrueExamEarly()');
@@ -1014,8 +1014,8 @@ test('only well-formed HTTP evaluations count; repeated failures and successes k
     await s.run('runCode()');
     assert.equal(s.run('trueExamSession.results.a.attempts'), 0);
     await evaluate(s, false);
-    await evaluate(s, true);
     await evaluate(s, false);
+    await evaluate(s, true);
     assert.equal(s.run('trueExamSession.results.a.attempts'), 3);
     assert.equal(s.run('trueExamSession.results.a.success'), true);
     s.run('submitTrueExamEarly()');
@@ -1047,13 +1047,13 @@ test('expiration fixes the report at the original deadline and ignores pending e
     assert.equal(s.data.get(reportKey), serialized);
 });
 
-test('all successfully evaluated exercises finish automatically, without success-based navigation', async () => {
+test('success advances through the series and the last exercise finishes automatically', async () => {
     const s = setup();
     s.run('available = [{id:"a"},{id:"b"}]; startTrueExamSeries()');
     await evaluate(s, true);
-    assert.equal(s.run('currentExercise.id'), 'a');
+    assert.equal(s.run('currentExercise.id'), 'b');
     assert.equal(s.run('trueExamState'), 'running');
-    await evaluate(s, true, 1); // An authorized internal selection, not new progression functionality.
+    await evaluate(s, true);
     assert.equal(s.run('trueExamState'), 'finished');
     assert.equal(finalReport(s).reason, 'completed');
     assert.equal(finalReport(s).summary.successful, 2);
@@ -1158,7 +1158,7 @@ test('v1 active and expired snapshots migrate without pretending unrecorded atte
     }
 });
 
-test('valid results survive active reload and are attributed to the exercise captured at dispatch', async () => {
+test('responses for a changed exercise are rejected, and valid progressed results survive reload', async () => {
     const s = reportExam();
     let resolve;
     s.context.fetch = () => new Promise(r => {resolve = r;});
@@ -1166,16 +1166,18 @@ test('valid results survive active reload and are attributed to the exercise cap
     s.run('trueExamIndex = 1; selectExercise("b")');
     resolve({ok: true, text: async () => '{"success":true}'});
     await pending;
-    assert.equal(s.run('trueExamSession.results.a.success'), true);
+    assert.equal(s.run('trueExamSession.results.a.success'), false);
+    assert.equal(s.run('trueExamSession.results.a.attempts'), 0);
     assert.equal(s.run('trueExamSession.results.b.attempts'), 0);
+    await evaluate(s, true);
     await s.fire('pagehide');
     const next = setup({data: s.data, tabData: s.tabData, page: 'recovered-stats', now: 61000, navigation: 'reload'});
     next.run('trueExamStorageOwned = false; trueExamRecoveryPending = true; available = [{id:"a",title:"Alpha",level:1},{id:"b",title:"Beta",level:2},{id:"c"}]');
     await next.run('restoreTrueExamSession()');
     assert.equal(next.run('trueExamState'), 'running');
-    assert.equal(next.run('trueExamSession.results.a.attempts'), 1);
-    assert.equal(next.run('trueExamSession.results.a.success'), true);
-    assert.equal(next.run('trueExamIndex'), 1);
+    assert.equal(next.run('trueExamSession.results.b.attempts'), 1);
+    assert.equal(next.run('trueExamSession.results.b.success'), true);
+    assert.equal(next.run('trueExamIndex'), 2);
     next.run('submitTrueExamEarly()');
     assert.equal(finalReport(next).summary.successful, 1);
     assert.equal(finalReport(next).summary.unattempted, 2);
@@ -1252,4 +1254,181 @@ test('pending successful evaluations cannot modify an early-submission report', 
     assert.equal(finalReport(s).summary.successful, 0);
     assert.equal(finalReport(s).summary.submissions, 0);
     assert.equal(s.run('trueExamResultsEl.hidden'), false);
+});
+
+test('failure keeps code/output; success preserves drafts and attempts while switching statements once', async () => {
+    const s = reportExam();
+    const original = s.run('trueExamSession');
+    const interval = s.run('trueExamTimerInterval');
+    s.run('codeEditorEl.value = "first solution"');
+    await evaluate(s, false);
+    assert.equal(s.run('currentExercise.id'), 'a');
+    assert.equal(s.run('codeEditorEl.value'), 'first solution');
+    assert.equal(s.run('outputEl.textContent'), 'evaluation');
+    assert.equal(s.run('trueExamSession.results.a.attempts'), 1);
+    s.run('trueExamSession.drafts.b = "own draft for b"');
+    await evaluate(s, true);
+    assert.equal(s.run('trueExamSession'), original);
+    assert.equal(s.run('trueExamTimerInterval'), interval);
+    assert.equal(s.run('trueExamSession.startedAt'), 1000);
+    assert.equal(s.run('trueExamSession.endsAt'), 10801000);
+    assert.equal(s.run('trueExamIndex'), 1);
+    assert.equal(s.run('currentExercise.id'), 'b');
+    assert.equal(s.run('trueExamProgressEl.textContent'), 'Exercice 02 / 03');
+    assert.equal(s.run('codeEditorEl.value'), 'own draft for b');
+    assert.equal(s.run('trueExamSession.drafts.a'), 'first solution');
+    assert.equal(s.run('trueExamSession.results.a.attempts'), 2);
+    assert.equal(s.run('trueExamSession.results.a.success'), true);
+    assert.equal(s.run('outputEl.textContent'), '');
+    assert.equal(snapshot(s).exerciseId, 'b');
+    assert.equal(snapshot(s).index, 1);
+    assert.equal(snapshot(s).code, 'own draft for b');
+    assert.equal(snapshot(s).results.a.attempts, 2);
+    assert.equal(s.run('runBtn.disabled'), false);
+    assert.equal(s.run('trueExamNextBtn.hidden && trueExamRestartBtn.hidden'), true);
+});
+
+test('repeated Run actions while pending send one request and can only advance one exercise', async () => {
+    const s = reportExam();
+    let resolve;
+    let count = 0;
+    s.context.fetch = () => {count++; return new Promise(r => {resolve = r;});};
+    const first = s.run('runCode()');
+    assert.equal(s.run('runBtn.disabled'), true);
+    const token = s.run('trueExamEvaluation');
+    assert.equal(token.sessionId, s.run('trueExamSession.id'));
+    assert.equal(token.exerciseId, 'a');
+    assert.equal(token.exerciseIndex, 0);
+    await s.run('runCode()');
+    s.run('updateTrueExamControls()');
+    assert.equal(s.run('runBtn.disabled'), true);
+    assert.equal(count, 1);
+    resolve({ok: true, text: async () => '{"success":true,"output":"a passed"}'});
+    resolve({ok: true, text: async () => '{"success":true}'}); // A duplicate promise completion has no effect.
+    await first;
+    assert.equal(s.run('trueExamIndex'), 1);
+    assert.equal(s.run('trueExamSession.results.a.attempts'), 1);
+    assert.equal(s.run('trueExamSession.results.b.attempts'), 0);
+    assert.equal(s.run('trueExamEvaluation'), null);
+    assert.equal(s.run('runBtn.disabled'), false);
+    assert.equal(s.run('outputEl.textContent'), '');
+});
+
+test('an old request cannot release the Run lock held by a replacement session', async () => {
+    const s = reportExam();
+    const resolvers = [];
+    s.context.fetch = () => new Promise(resolve => resolvers.push(resolve));
+    const old = s.run('runCode()');
+    s.run('setAppMode("exam"); setAppMode("true-exam")');
+    await s.run('requestTrueExamStart()');
+    const currentId = s.run('trueExamSession.id');
+    const current = s.run('runCode()');
+    const token = s.run('trueExamEvaluation');
+    resolvers[0]({ok: true, text: async () => '{"success":true}'});
+    await old;
+    assert.equal(s.run('trueExamSession.id'), currentId);
+    assert.equal(s.run('trueExamIndex'), 0);
+    assert.equal(s.run('trueExamEvaluation'), token);
+    assert.equal(s.run('runBtn.disabled'), true);
+    assert.equal(s.run('trueExamSession.results.a.attempts'), 0);
+    resolvers[1]({ok: true, text: async () => '{"success":false,"output":"retry"}'});
+    await current;
+    assert.equal(s.run('trueExamSession.results.a.attempts'), 1);
+    assert.equal(s.run('trueExamIndex'), 0);
+    assert.equal(s.run('runBtn.disabled'), false);
+});
+
+test('invalid or failed HTTP evaluation releases Run without counting or advancing', async () => {
+    const s = reportExam();
+    for (const response of [
+        {ok: false, text: async () => '{"success":true}'},
+        {ok: true, text: async () => 'broken'},
+        {ok: true, text: async () => '{"success":"true"}'}
+    ]) {
+        s.context.fetch = async () => response;
+        await s.run('runCode()');
+        assert.equal(s.run('trueExamIndex'), 0);
+        assert.equal(s.run('trueExamSession.results.a.attempts'), 0);
+        assert.equal(s.run('runBtn.disabled'), false);
+    }
+    s.context.fetch = async () => {throw new Error('offline');};
+    await s.run('runCode()');
+    assert.equal(s.run('trueExamEvaluation'), null);
+    assert.equal(s.run('runBtn.disabled'), false);
+});
+
+test('a successful response after the deadline cannot count, progress or re-enable Run', async () => {
+    const s = reportExam();
+    let resolve;
+    s.context.fetch = () => new Promise(r => {resolve = r;});
+    const pending = s.run('runCode()');
+    s.advance(10800000);
+    resolve({ok: true, text: async () => '{"success":true}'});
+    await pending;
+    assert.equal(finalReport(s).reason, 'time_expired');
+    assert.equal(finalReport(s).summary.successful, 0);
+    assert.equal(finalReport(s).summary.submissions, 0);
+    assert.equal(s.run('trueExamState'), 'finished');
+    assert.equal(s.run('runBtn.disabled'), true);
+    assert.equal(s.intervals.size, 0);
+});
+
+test('a legacy session on the final exercise completes without inventing prior successes', async () => {
+    const s = savedExam();
+    s.run('trueExamIndex = 9; selectExercise("ex-9")');
+    await evaluate(s, true);
+    assert.equal(finalReport(s).reason, 'completed');
+    assert.equal(finalReport(s).summary.successful, 1);
+    assert.equal(finalReport(s).summary.unattempted, 9);
+    const next = await recover(s);
+    assert.equal(next.run('trueExamReport.reason'), 'completed');
+    assert.equal(next.run('trueExamReport.summary.successful'), 1);
+    assert.equal(next.intervals.size, 0);
+});
+
+test('Exam and Learning keep their existing evaluation behavior and are not serialized by True Exam', async () => {
+    for (const learning of [false, true]) {
+        const s = setup();
+        s.run(`trueExamMode = false; learningMode = ${learning}; runBtn.disabled = false`);
+        const resolvers = [];
+        s.context.fetch = () => new Promise(resolve => resolvers.push(resolve));
+        const first = s.run('runCode()');
+        const second = s.run('runCode()');
+        assert.equal(resolvers.length, 2);
+        assert.equal(s.run('runBtn.disabled'), false);
+        assert.equal(s.run('trueExamEvaluation'), null);
+        resolvers[1]({ok: true, text: async () => '{"success":true}'});
+        await second;
+        resolvers[0]({ok: true, text: async () => '{"success":false,"output":"regular output"}'});
+        await first;
+        assert.equal(s.run('currentExercise.id'), 'test');
+        assert.equal(s.run('outputEl.textContent'), 'regular output');
+        assert.equal(s.data.get(sessionKey), undefined);
+    }
+});
+
+test('F5 after progression restores the next exercise, its code and accepted results with the original clock', async () => {
+    const s = reportExam();
+    s.run('codeEditorEl.value = "solution a"');
+    await evaluate(s, true);
+    s.run('codeEditorEl.value = "draft b"; saveTrueExamSession()');
+    const original = snapshot(s);
+    s.advance(60000);
+    await s.fire('pagehide');
+    const next = setup({data: s.data, tabData: s.tabData, history: s.history, page: 'after-progress', now: 61000, navigation: 'reload'});
+    next.run('trueExamStorageOwned = false; trueExamRecoveryPending = true; available = [{id:"a",title:"Alpha",level:1},{id:"b",title:"Beta",level:2},{id:"c"}]');
+    await next.run('restoreTrueExamSession()');
+    assert.equal(next.run('trueExamSession.id'), original.id);
+    assert.equal(next.run('trueExamSession.startedAt'), original.startedAt);
+    assert.equal(next.run('trueExamSession.endsAt'), original.endsAt);
+    assert.equal(next.run('trueExamTimerEl.textContent'), '02:59:00');
+    assert.equal(next.run('currentExercise.id'), 'b');
+    assert.equal(next.run('trueExamIndex'), 1);
+    assert.equal(next.run('codeEditorEl.value'), 'draft b');
+    assert.equal(next.run('trueExamSession.results.a.success'), true);
+    assert.equal(next.run('trueExamSession.results.a.attempts'), 1);
+    assert.equal(next.run('trueExamSession.drafts.a'), 'solution a');
+    assert.equal(next.run('trueExamEvaluation'), null);
+    assert.equal(next.run('runBtn.disabled'), false);
+    assert.equal(next.intervals.size, 1);
 });

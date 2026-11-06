@@ -443,7 +443,7 @@ const TRUE_EXAM_STORAGE_KEY = "z01exam-true-exam-session";
 const TRUE_EXAM_REPORT_KEY = "z01exam-true-exam-report";
 const TRUE_EXAM_FINISH_LABELS = {
     time_expired: "Temps écoulé : l’examen est terminé.",
-    completed: "Tous les exercices ont été réussis.",
+    completed: "Série d’exercices terminée.",
     submitted_early: "Examen remis avant la fin du temps prévu.",
     interruption_timeout: "L’interruption a dépassé cinq minutes."
 };
@@ -462,6 +462,7 @@ let trueExamSaveTimeout = null;
 let trueExamRecoveryPending = false;
 let trueExamRestorePromise = null;
 let trueExamStarting = false;
+let trueExamEvaluation = null; // In-memory request token; never persisted.
 let trueExamHistoryExit = null;
 let trueExamHistoryGuard = null;
 const TRUE_EXAM_HISTORY_KEY = "z01examTrueExam";
@@ -857,7 +858,7 @@ function validateTrueExamReport(report, expectedId) {
         report.results.some((row, index) => !row || row.id !== report.exerciseIds[index] ||
             typeof row.title !== "string" || !(row.level === null || Number.isFinite(row.level))) ||
         !validTrueExamResults(report.exerciseIds, Object.fromEntries(report.results.map(row => [row.id, row]))) ||
-        (report.reason === "completed" && report.results.some(row => !row.success)) ||
+        (report.reason === "completed" && !report.results.at(-1).success) ||
         (report.reason === "time_expired" && report.completedAt !== report.endsAt)) {
         throw new Error("Le bilan sauvegardé est invalide ou incompatible.");
     }
@@ -910,6 +911,7 @@ function renderTrueExamReport(report) {
 }
 
 function showTrueExamReport(report) {
+    trueExamEvaluation = null;
     cancelTrueExamSave();
     stopTrueExamTimer();
     trueExamReport = report;
@@ -973,14 +975,25 @@ function finishTrueExamSession(reason, completedAt = Date.now(), restoredComplet
     return true;
 }
 
-function recordTrueExamEvaluation(session, exerciseId, success) {
-    if (session !== trueExamSession || !canRunTrueExam()) return;
+function recordTrueExamEvaluation(session, exerciseId, exerciseIndex, success) {
+    if (session !== trueExamSession || !canRunTrueExam() || exerciseIndex !== trueExamIndex ||
+        exId(currentExercise || {}) !== exerciseId || exId(trueExamSeries[exerciseIndex] || {}) !== exerciseId) return false;
     const result = session.results[exerciseId];
-    if (!result) return;
+    if (!result) return false;
     result.attempts += 1;
     result.success ||= success;
-    saveTrueExamSession();
-    if (Object.values(session.results).every(result => result.success)) finishTrueExamSession("completed");
+    if (success) {
+        if (exerciseIndex === trueExamSeries.length - 1) {
+            finishTrueExamSession("completed");
+        } else {
+            trueExamIndex = exerciseIndex + 1;
+            // selectExercise saves the old draft, restores the next draft and persists results/index together.
+            selectExercise(exId(trueExamSeries[trueExamIndex]));
+        }
+    } else {
+        saveTrueExamSession();
+    }
+    return true;
 }
 
 function submitTrueExamEarly() {
@@ -1095,6 +1108,7 @@ async function acquireTrueExamOwnership() {
 }
 
 function clearTrueExamMemory() {
+    trueExamEvaluation = null;
     cancelTrueExamSave();
     stopTrueExamTimer();
     const track = trueExamSession?.track;
@@ -1494,6 +1508,7 @@ function refreshTrueExamTimer() {
 
 // Restoration supplies identity/drafts after rebuilding the original series and editor.
 function startTrueExamTimer(startedAt = Date.now(), endsAt = startedAt + TRUE_EXAM_DURATION_MS, restored = {}) {
+    trueExamEvaluation = null;
     stopTrueExamTimer();
     trueExamSession = { startedAt, endsAt, track: currentTrack,
         id: restored.id || crypto.randomUUID(), drafts: restored.drafts || Object.create(null),
@@ -1507,6 +1522,7 @@ function startTrueExamTimer(startedAt = Date.now(), endsAt = startedAt + TRUE_EX
 }
 
 function resetTrueExamTimer() {
+    trueExamEvaluation = null;
     cancelTrueExamSave();
     stopTrueExamTimer();
     trueExamSession = null;
@@ -1550,7 +1566,7 @@ function updateTrueExamControls() {
     trueExamProgressEl.textContent = running
         ? `Exercice ${String(trueExamIndex + 1).padStart(2, "0")} / ${String(trueExamSeries.length).padStart(2, "0")}`
         : "";
-    runBtn.disabled = trueExamMode && !running;
+    runBtn.disabled = trueExamMode && (!running || !!trueExamEvaluation || trueExamRecoveryPending);
     trackSwitchEl.hidden = running;
     trackInputs.forEach(input => { input.disabled = running; });
     trueExamHeaderEl.hidden = !running;
@@ -2195,18 +2211,28 @@ function selectExercise(id) {
 }
 
 async function runCode() {
-    if (!canRunTrueExam()) return;
+    if (!canRunTrueExam() || (trueExamMode && trueExamEvaluation)) return;
     saveTrueExamSession();
-    const session = trueExamSession;
-    // Ignore results/errors belonging to an expired, abandoned or restarted exam.
-    const acceptsResult = () => session === trueExamSession && canRunTrueExam();
+    if (!canRunTrueExam()) return;
     if (!currentExercise) {
         outputEl.textContent = "Sélectionne un exercice.";
         return;
     }
 
-    const code = codeEditorEl.value;
+    const strictExam = trueExamMode;
+    const session = trueExamSession;
     const exerciseId = exId(currentExercise);
+    const exerciseIndex = trueExamIndex;
+    const request = strictExam ? { session, sessionId: session.id, exerciseId, exerciseIndex } : null;
+    const acceptsResult = () => session === trueExamSession && canRunTrueExam() && (!strictExam || (
+        trueExamEvaluation === request && trueExamMode && session.id === request.sessionId &&
+        trueExamIndex === exerciseIndex && exId(currentExercise || {}) === exerciseId
+    ));
+    if (strictExam) {
+        trueExamEvaluation = request;
+        updateTrueExamControls();
+    }
+    const code = codeEditorEl.value;
     outputEl.textContent = "Running tests...";
 
     try {
@@ -2235,8 +2261,11 @@ async function runCode() {
             outputEl.textContent = "Évaluation non comptabilisée : réponse invalide ou erreur HTTP.";
             return;
         }
-        if (trueExamMode) recordTrueExamEvaluation(session, exerciseId, data.success);
-        if (trueExamMode && trueExamState !== "running") return;
+        if (strictExam) {
+            if (!recordTrueExamEvaluation(session, exerciseId, exerciseIndex, data.success)) return;
+            // A success has replaced the exercise (or shown the report). Never print its output on the next one.
+            if (trueExamState !== "running" || trueExamIndex !== exerciseIndex || exId(currentExercise || {}) !== exerciseId) return;
+        }
         const ok = !!data.success;
         const out = (data.output || "").toString();
 
@@ -2256,6 +2285,12 @@ async function runCode() {
     } catch (e) {
         if (!acceptsResult()) return;
         outputEl.textContent = "Erreur réseau ou JS : " + e.message;
+    } finally {
+        // An old request must not release a newer session's pending evaluation.
+        if (strictExam && trueExamEvaluation === request) {
+            trueExamEvaluation = null;
+            updateTrueExamControls();
+        }
     }
 }
 

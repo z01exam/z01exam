@@ -9,7 +9,7 @@
   précède l’énoncé. Next/restart restent masqués et bloqués.
 - `finished` : état terminal, sans nouvelle évaluation. Une fin normale conserve
   les résultats et affiche le bilan plein écran ; un abandon invalide la session
-  et efface les brouillons. Une validation réussie ne fait pas encore avancer.
+  et efface les brouillons. Une réussite acceptée fait avancer, ou termine la série.
 
 La durée reste de 10 800 secondes. Le temps restant est calculé depuis
 `endsAt - Date.now()` ; l’unique intervalle ne fait que rafraîchir l’affichage.
@@ -107,7 +107,7 @@ Les motifs terminaux canoniques sont distincts :
 | Motif | Déclencheur | Bilan |
 | --- | --- | --- |
 | `time_expired` | Échéance originale atteinte | Oui, fin fixée à `endsAt` |
-| `completed` | Chaque exercice a au moins une validation réussie acceptée | Oui |
+| `completed` | Dernier exercice validé dans la série | Oui |
 | `submitted_early` | « Terminer l'examen » confirmé avant l’échéance | Oui |
 | `interruption_timeout` | Interruption détectée dépassant cinq minutes | Oui, à la limite de reprise |
 | `abandoned` | Back reconnu ou sortie confirmée d’une session active | Non, brouillons invalidés |
@@ -134,8 +134,34 @@ réseau/HTTP, un JSON invalide ou une réponse tardive ne crée pas de tentative
 Chaque réponse acceptée incrémente `results[id].attempts` ; `success` reste vrai
 dès la première réussite. Les catégories sont exclusives : réussi si `success`,
 non réussi si `attempts > 0` sans réussite, non tenté si `attempts === 0`.
-Leur somme égale toujours le nombre d’exercices sélectionnés. Tous réussis termine
-l’examen ; aucune progression automatique entre exercices n’est ajoutée.
+Leur somme égale toujours le nombre d’exercices sélectionnés. Une réussite acceptée
+sur l’exercice courant sélectionne automatiquement le suivant ; la dernière termine
+l’examen avec le motif `completed`. Les statistiques restent fondées sur les résultats,
+jamais sur l’index : une ancienne sauvegarde sans historique peut donc terminer la
+série sans qu’on invente des réussites pour les exercices antérieurs.
+
+### Progression et requêtes concurrentes
+
+Pendant True Exam, une seule évaluation est autorisée à la fois. Un jeton mémoire
+capture l’objet de session, son UUID, l’ID d’exercice et son index. Run est désactivé
+jusqu’à la fin de la requête ; un appel JavaScript répété est également bloqué.
+Avant tout comptage ou changement d’exercice, ces identités doivent encore
+correspondre à la session active et à l’exercice affiché, avec l’échéance inchangée.
+
+Un échec conserve l’exercice, le code et la sortie d’évaluation. Une réussite
+conserve ses tentatives et son brouillon, incrémente l’index d’une seule position,
+puis `selectExercise()` restaure le brouillon du nouvel exercice (vide s’il n’en a
+pas), affiche son énoncé et sauvegarde position/résultats/code ensemble. La console
+est effacée pour ne pas attribuer le résultat précédent au nouvel exercice. Aucun
+nouveau tirage ni redémarrage de minuteur n’a lieu. Sur le dernier exercice, le
+bilan remplace directement l’espace de travail, sans étape vide.
+
+Le jeton n’est pas persisté : F5 ou une restauration invalide l’ancienne requête,
+sans rejouer automatiquement la soumission. Le bloc `finally` ne libère Run que
+s’il détient toujours ce même jeton ; une ancienne réponse ne peut donc pas
+réactiver les contrôles d’une nouvelle requête/session. Expiration, remise anticipée
+et abandon gardent leurs protections. Next/Previous et restart restent indisponibles.
+Les modes Exam et Learning conservent leur comportement antérieur.
 
 ### Persistance du bilan
 
@@ -270,8 +296,8 @@ Références : [pagehide](https://developer.mozilla.org/en-US/docs/Web/API/Windo
 
 `node --test tests/true-exam-timer.test.cjs` utilise des horloges, stockages,
 événements et verrous simulés, sans dépendance ajoutée. Les tests unitaires ne valident pas un
-navigateur réel. La progression automatique, les comptes et le stockage serveur
-restent hors périmètre.
+navigateur réel. Les comptes, le mode détendu et le stockage serveur restent
+hors périmètre.
 
 Un scénario optionnel reproductible dans Firefox réel est fourni dans
 `tests/firefox-history-check.cjs` (WebDriver standard, aucun paquet npm ajouté).
@@ -284,7 +310,9 @@ DISABLE_NAVIGATION_API=1 node tests/firefox-history-check.cjs
 
 `Z01EXAM_URL` et `GECKODRIVER_URL` permettent de choisir d’autres ports. Le scénario
 vérifie F5, un seul Back, Forward, un nouvel UUID sans code hérité et une nouvelle
-navigation vers l’application. Il vérifie aussi la confirmation réelle de remise,
+navigation vers l’application. Il simule des réponses de `/api/run` pour vérifier échec, progression unique, F5
+sur le deuxième exercice et bilan automatique après le dernier succès, sans appeler
+le runner Docker. Il vérifie aussi la confirmation réelle de remise,
 le remplacement plein écran, F5 sur le bilan, Nouvel examen et Quitter. Un marqueur DOM distingue un document réellement
 rendu depuis le cache d’un document rechargé ; le résultat est affiché. Lors des
 vérifications Firefox 156 effectuées pour cette correction, ce marqueur a confirmé
@@ -313,4 +341,10 @@ Pour les résultats, vérifier aussi les fins `time_expired` et `interruption_ti
 avec une horloge contrôlée dans un profil de test, une remise annulée/confirmée,
 les statistiques d’exercices réussis/non réussis/non tentés, et la lisibilité du
 tableau sur petit écran. Les tests Node simulent ces évaluations sans appeler le
-runner ; les vérifications Firefox du bilan utilisent une remise sans soumission.
+runner ; le scénario Firefox utilise aussi des réponses de grading simulées, et
+ne vérifie pas une exécution réelle de code dans Docker.
+
+Pour vérifier manuellement la progression avec le vrai runner : soumettre une
+solution incorrecte puis correcte, vérifier une seule avance, le nouveau code vide
+et le décompte continu. F5 doit conserver cette position et les résultats acquis.
+Valider le dernier exercice doit ouvrir directement le bilan `completed`.
