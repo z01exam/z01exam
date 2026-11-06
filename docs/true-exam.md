@@ -165,6 +165,10 @@ Web Locks garde un verrou exclusif pendant l’examen, même masqué, jusqu’au
 à la sortie ou à la finalisation. Sans lui, propriétaire enregistré et événements
 `storage` protègent les écritures/évaluations, sans atomicité. Le document perdant
 la propriété arrête son minuteur et ses évaluations sans écraser l’autre snapshot.
+L’abandon par historique acquiert cette même propriété, puis relit UUID, état et
+propriétaire avant l’écriture. Back attend ce contrôle borné à une seconde, sans
+attendre le verrou d’un autre document. Une restauration concurrente lui cède la main.
+Sans Web Locks, un `ownerId` étranger est refusé même si le `tabId` a été copié.
 
 ## 6. Limites connues
 

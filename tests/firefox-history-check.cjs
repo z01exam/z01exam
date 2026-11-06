@@ -54,6 +54,31 @@ async function start() {
                 code: document.getElementById("code-editor").value};`;
         await script('document.getElementById("code-editor").value="const historyMarker = 42;"; saveTrueExamSession();');
         const original = await script(snapshot);
+        // Reproduce duplicated-tab metadata in a second real document, without depending on browser chrome UI.
+        const ownerWindow = await command('/window');
+        const ownerMetadata = await script('return {saved: JSON.parse(localStorage.getItem("z01exam-true-exam-session")), state: history.state};');
+        const secondary = await command('/window/new', {type: 'tab'});
+        await command('/window', {handle: secondary.handle});
+        await command('/url', {url: app + '/docs/architecture-services.md?secondary-owner-test'});
+        await script(`sessionStorage.setItem("z01exam-true-exam-tab", ${JSON.stringify(ownerMetadata.saved.tabId)});`);
+        await command('/url', {url: app + '/'});
+        await wait('return typeof syncTrueExamHistoryGuard === "function" && document.getElementById("true-exam-expired").textContent.includes("autre onglet");');
+        const baseState = structuredClone(ownerMetadata.state);
+        baseState.z01examTrueExam.kind = 'base';
+        await script(`history.replaceState(${JSON.stringify(baseState)}, "");
+            history.pushState(${JSON.stringify(ownerMetadata.state)}, ""); syncTrueExamHistoryGuard();`);
+        assert.equal(await script('return sessionStorage.getItem("z01exam-true-exam-tab");'), ownerMetadata.saved.tabId);
+        assert.deepEqual(await script('return history.state;'), ownerMetadata.state);
+        await command('/back', {});
+        await wait('return location.pathname === "/docs/architecture-services.md"');
+        const afterSecondaryBack = await script('return JSON.parse(localStorage.getItem("z01exam-true-exam-session"));');
+        for (const key of ['id', 'ownerId', 'endsAt', 'code', 'results', 'drafts', 'status']) {
+            assert.deepEqual(afterSecondaryBack[key], ownerMetadata.saved[key]);
+        }
+        await command('/window', undefined, 'DELETE');
+        await command('/window', {handle: ownerWindow});
+        assert.equal(await script('return canRunTrueExam();'), true);
+        console.log('PASS secondary document: copied tab ID/history cannot abandon or unlock the original owner; Back still leaves');
         await command('/refresh', {});
         await wait('return !!document.getElementById("true-exam-header") && !document.getElementById("true-exam-header").hidden');
         assert.deepEqual(await script(snapshot), original);

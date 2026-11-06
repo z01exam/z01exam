@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync('app.js', 'utf8');
-function testHistory() {
-    const entries = [{external: true}, {state: null}];
-    let index = 1;
+function testHistory(source) {
+    const entries = source ? structuredClone(source.entries) : [{external: true}, {state: null}];
+    let index = source ? source.index : 1;
     let backCalls = 0;
     return {
         entries,
@@ -477,6 +477,7 @@ test('corrupt snapshots, invalid metadata and missing IDs fail without random re
     ];
     for (const change of variants) {
         const first = savedExam();
+        await first.fire("pagehide"); // This restore fixture must no longer have a live owner.
         const raw = change(snapshot(first));
         first.data.set(sessionKey, raw);
         const next = await recover(first, {tabData: first.tabData, navigation: 'reload'});
@@ -1431,4 +1432,210 @@ test('F5 after progression restores the next exercise, its code and accepted res
     assert.equal(next.run('trueExamEvaluation'), null);
     assert.equal(next.run('runBtn.disabled'), false);
     assert.equal(next.intervals.size, 1);
+});
+
+function sharedWebLocks() {
+    let holder = null;
+    const released = [];
+    const requests = [];
+    return {
+        get holder() {return holder;}, released, requests,
+        navigatorFor(documentId) {
+            return {locks: {request: async (name, options, callback) => {
+                requests.push(documentId);
+                assert.equal(options.ifAvailable, true);
+                if (holder !== null) return callback(null);
+                holder = documentId;
+                try {return await callback({name});}
+                finally {holder = null; released.push(documentId);}
+            }}};
+        }
+    };
+}
+
+async function ownedExam(locks) {
+    const a = setup({page: 'A', navigator: locks.navigatorFor('A')});
+    a.run('trueExamStorageOwned = false');
+    await a.run('requestTrueExamStart()');
+    a.run('codeEditorEl.value = "owner solution"; saveTrueExamSession()');
+    await evaluate(a, false);
+    return a;
+}
+function duplicateDocument(a, navigator) {
+    const b = setup({data: a.data, tabData: new Map(a.tabData), history: testHistory(a.history), page: 'B', navigator});
+    b.run('trueExamStorageOwned = false; trueExamMode = false; exercisesLoaded = false; initializeTrueExamRecovery()');
+    return b;
+}
+
+test('a duplicated document with copied tab ID/history cannot abandon or unlock the live owner', async () => {
+    const locks = sharedWebLocks();
+    const a = await ownedExam(locks);
+    const original = a.data.get(sessionKey);
+    const b = duplicateDocument(a, locks.navigatorFor('B'));
+    assert.equal(b.run('trueExamTabId'), a.run('trueExamTabId'));
+    assert.deepEqual(b.history.state, a.history.state);
+    assert.notEqual(b.run('trueExamPageId'), a.run('trueExamPageId'));
+    const back = b.fire('popstate', {state: b.history.move(-1)});
+    await back;
+    assert.equal(b.history.backCalls, 1);
+    assert.equal(a.data.get(sessionKey), original);
+    assert.equal(a.run('trueExamState'), 'running');
+    assert.equal(a.run('codeEditorEl.value'), 'owner solution');
+    assert.equal(a.run('trueExamSession.id'), JSON.parse(original).id);
+    assert.equal(a.run('trueExamSession.endsAt'), JSON.parse(original).endsAt);
+    assert.equal(a.run('trueExamSession.results.test.attempts'), 1);
+    assert.equal(locks.holder, 'A');
+    assert.deepEqual(locks.released, []);
+    assert.equal(a.run('trueExamStorageOwned'), true);
+    assert.equal(b.run('trueExamStorageOwned'), false);
+    await a.fire('pagehide');
+});
+
+test('Back immediately after F5 shares acquisition with restoration and persists abandonment before leaving', async () => {
+    const locks = sharedWebLocks();
+    const a = await ownedExam(locks);
+    await a.fire('pagehide');
+    let grant;
+    let acquisitions = 0;
+    const delayedNavigator = {locks: {request: (...args) => {
+        acquisitions++;
+        return new Promise(resolve => {grant = () => resolve(locks.navigatorFor('reload').locks.request(...args));});
+    }}};
+    const reload = setup({data: a.data, tabData: a.tabData, history: testHistory(a.history), page: 'reload', navigation: 'reload', navigator: delayedNavigator});
+    reload.run('trueExamStorageOwned = false; trueExamMode = false; exercisesLoaded = false; initializeTrueExamRecovery()');
+    const restore = reload.run('restoreTrueExamSession()');
+    const back = reload.fire('popstate', {state: reload.history.move(-1)});
+    assert.equal(reload.history.backCalls, 0); // No navigation while ownership is unresolved.
+    assert.equal(snapshot(reload).status, 'running');
+    assert.equal(acquisitions, 1); // Both operations share the same pending lock request.
+    grant();
+    await Promise.all([restore, back]);
+    assert.equal(snapshot(reload).finishReason, 'abandoned');
+    assert.equal(reload.history.backCalls, 1);
+    assert.equal(locks.requests.filter(id => id === 'reload').length, 1);
+    assert.equal(locks.holder, null);
+    assert.equal(reload.run('trueExamSession'), null);
+    await reload.fire('pageshow', {persisted: true});
+    assert.equal(reload.run('trueExamSession'), null);
+});
+
+test('history revalidates UUID/status after acquisition and never abandons a replacement or completed session', async () => {
+    for (const terminal of [false, true]) {
+        const locks = sharedWebLocks();
+        const a = await ownedExam(locks);
+        const id = snapshot(a).id;
+        await a.fire('pagehide');
+        const b = duplicateDocument(a, locks.navigatorFor('B'));
+        const pending = b.run(`abandonTrueExamFromHistory(${JSON.stringify(id)})`);
+        const replacement = terminal
+            ? {version: 2, id, status: 'finished', finishReason: 'submitted_early'}
+            : {...snapshot(a), id: 'new-session', ownerId: null};
+        a.data.set(sessionKey, JSON.stringify(replacement));
+        await pending;
+        assert.deepEqual(snapshot(a), replacement);
+        assert.equal(locks.holder, null);
+    }
+});
+
+test('without Web Locks a copied tab ID cannot override another document owner', async () => {
+    const a = savedExam();
+    const original = a.data.get(sessionKey);
+    const b = duplicateDocument(a, {});
+    await b.fire('popstate', {state: b.history.move(-1)});
+    assert.equal(b.history.backCalls, 1);
+    assert.equal(a.data.get(sessionKey), original);
+    assert.equal(a.run('canRunTrueExam()'), true);
+    assert.equal(b.run('trueExamStorageOwned'), false);
+});
+
+test('a delayed lock callback cannot block Back indefinitely or acquire ownership after timeout', async () => {
+    const a = savedExam();
+    await a.fire('pagehide');
+    const original = a.data.get(sessionKey);
+    let callback;
+    const b = duplicateDocument(a, {locks: {request: (_name, _options, fn) => {callback = fn; return new Promise(() => {});}}});
+    const back = b.fire('popstate', {state: b.history.move(-1)});
+    assert.equal(b.history.backCalls, 0);
+    b.flush(); // Controlled timeout fires while the browser's callback is still delayed.
+    await back;
+    assert.equal(b.history.backCalls, 1);
+    assert.equal(b.run('trueExamStorageOwned'), false);
+    assert.equal(callback({name: sessionKey}), undefined);
+    assert.equal(b.run('trueExamStorageOwned'), false);
+    assert.equal(b.data.get(sessionKey), original);
+});
+
+test('an owner active Back retains its existing abandonment and Forward protection', async () => {
+    const locks = sharedWebLocks();
+    const a = await ownedExam(locks);
+    const id = snapshot(a).id;
+    await a.fire('popstate', {state: a.history.move(-1)});
+    assert.deepEqual(snapshot(a), {version: 2, id, status: 'finished', finishReason: 'abandoned'});
+    assert.equal(a.history.backCalls, 1);
+    assert.equal(locks.holder, null);
+    a.history.move(-1);
+    await a.fire('pagehide', {persisted: true});
+    a.history.move(1);
+    await a.fire('pageshow', {persisted: true});
+    assert.equal(a.run('trueExamSession'), null);
+    assert.equal(a.run('codeEditorEl.value'), '');
+});
+
+test('a released acquisition cannot later grant local ownership to a stale document', async () => {
+    let callback;
+    const s = setup({navigator: {locks: {request: (_name, _options, fn) => {callback = fn; return new Promise(() => {});}}}});
+    s.run('trueExamStorageOwned = false');
+    const pending = s.run('acquireTrueExamOwnership()');
+    s.run('releaseTrueExamOwnership()');
+    assert.equal(callback({name: sessionKey}), undefined);
+    assert.equal(await pending, false);
+    assert.equal(s.run('trueExamStorageOwned'), false);
+    assert.equal(s.run('trueExamReleaseLock'), null);
+});
+
+test('Back at the original deadline preserves expiration/report rather than abandonment', async () => {
+    const locks = sharedWebLocks();
+    const a = await ownedExam(locks);
+    a.advance(10800000);
+    await a.fire('popstate', {state: a.history.move(-1)});
+    assert.equal(snapshot(a).finishReason, 'time_expired');
+    assert.equal(finalReport(a).reason, 'time_expired');
+    assert.equal(finalReport(a).summary.submissions, 1);
+    assert.equal(a.history.backCalls, 1);
+    assert.equal(locks.holder, null);
+});
+
+test('a second user traversal while ownership is pending does not trigger an extra automatic Back', async () => {
+    const a = savedExam();
+    await a.fire('pagehide');
+    let grant;
+    const b = duplicateDocument(a, {locks: {request: (_name, _options, callback) => {
+        return new Promise(resolve => {grant = () => resolve(callback({name: sessionKey}));});
+    }}});
+    const back = b.fire('popstate', {state: b.history.move(-1)});
+    b.history.move(-1); // The user has already left the controlled base entry.
+    grant();
+    await back;
+    assert.equal(snapshot(b).finishReason, 'abandoned');
+    assert.equal(b.history.backCalls, 0);
+    assert.equal(b.run('trueExamStorageOwned'), false);
+});
+
+test('history abandonment releases ownership already acquired before in-memory restoration', async () => {
+    const locks = sharedWebLocks();
+    const a = await ownedExam(locks);
+    const sessionId = snapshot(a).id;
+    await a.fire('pagehide');
+    assert.equal(locks.holder, null);
+    const b = duplicateDocument(a, locks.navigatorFor('B'));
+    assert.equal(await b.run('acquireTrueExamOwnership()'), true);
+    assert.equal(b.run('trueExamSession'), null);
+    assert.equal(b.run('trueExamStorageOwned'), true);
+    assert.equal(locks.holder, 'B');
+    await b.run(`abandonTrueExamFromHistory(${JSON.stringify(sessionId)})`);
+    assert.deepEqual(snapshot(b), {version: 2, id: sessionId, status: 'finished', finishReason: 'abandoned'});
+    assert.equal(b.run('trueExamStorageOwned'), false);
+    assert.equal(b.run('trueExamReleaseLock'), null);
+    assert.equal(locks.holder, null);
+    assert.deepEqual(locks.released, ['A', 'B']);
 });

@@ -456,6 +456,9 @@ try {
     window.sessionStorage.setItem("z01exam-true-exam-tab", trueExamTabId);
 } catch { /* Session storage is optional; reload detection is conservative without it. */ }
 let trueExamStorageOwned = false;
+let trueExamOwnershipPromise = null;
+let trueExamOwnershipGeneration = 0;
+let trueExamHistoryAbandoning = null;
 let trueExamStorageFailed = false;
 let trueExamReleaseLock = null;
 let trueExamSaveTimeout = null;
@@ -1076,6 +1079,7 @@ function validateTrueExamSnapshot(snapshot) {
 }
 
 function releaseTrueExamOwnership() {
+    trueExamOwnershipGeneration += 1;
     trueExamStorageOwned = false;
     if (trueExamReleaseLock) trueExamReleaseLock();
     trueExamReleaseLock = null;
@@ -1083,28 +1087,42 @@ function releaseTrueExamOwnership() {
 
 async function acquireTrueExamOwnership() {
     if (trueExamStorageOwned) return true;
-    if (navigator.locks?.request) {
-        // The callback holds the lock until pagehide or an explicit exit; hidden tabs keep it.
-        return new Promise(resolve => {
-            navigator.locks.request(TRUE_EXAM_STORAGE_KEY, { ifAvailable: true }, lock => {
-                if (!lock) { resolve(false); return; }
-                trueExamStorageOwned = true;
-                return new Promise(release => {
-                    trueExamReleaseLock = release;
-                    resolve(true);
-                });
-            }).catch(() => resolve(false));
-        });
-    }
-    // Conservative fallback: never take an unmarked session from a different tab.
-    try {
-        const snapshot = readTrueExamSnapshot();
-        if (snapshot?.ownerId && snapshot.ownerId !== trueExamPageId && snapshot.tabId !== trueExamTabId) return false;
-    } catch {
-        // Storage failures must not prevent an in-memory exam.
-    }
-    trueExamStorageOwned = true;
-    return true;
+    if (trueExamOwnershipPromise) return trueExamOwnershipPromise;
+    const generation = trueExamOwnershipGeneration;
+    const pending = (async () => {
+        if (navigator.locks?.request) {
+            // ifAvailable never waits for another owner's release. Bound delayed callbacks too.
+            return new Promise(resolve => {
+                let settled = false;
+                const timeout = setTimeout(() => { settled = true; resolve(false); }, 1000);
+                navigator.locks.request(TRUE_EXAM_STORAGE_KEY, { ifAvailable: true }, lock => {
+                    clearTimeout(timeout);
+                    if (settled || generation !== trueExamOwnershipGeneration || !lock) {
+                        resolve(false);
+                        return;
+                    }
+                    settled = true;
+                    trueExamStorageOwned = true;
+                    return new Promise(release => {
+                        trueExamReleaseLock = release;
+                        resolve(true);
+                    });
+                }).catch(() => { clearTimeout(timeout); resolve(false); });
+            });
+        }
+        // A copied tabId is not proof of ownership; only an unowned/same-document snapshot is safe.
+        try {
+            const snapshot = readTrueExamSnapshot();
+            if (snapshot?.ownerId && snapshot.ownerId !== trueExamPageId) return false;
+        } catch {
+            // Storage failures must not prevent an in-memory exam; history writes still require a valid read.
+        }
+        trueExamStorageOwned = true;
+        return true;
+    })();
+    trueExamOwnershipPromise = pending;
+    try { return await pending; }
+    finally { if (trueExamOwnershipPromise === pending) trueExamOwnershipPromise = null; }
 }
 
 function clearTrueExamMemory() {
@@ -1234,6 +1252,7 @@ async function restoreTrueExamSession(expectedId = null) {
     trueExamRestorePromise = (async () => {
         try {
             if (!await acquireTrueExamOwnership()) throw new Error("L’examen est déjà ouvert dans un autre onglet. Reviens dans cet onglet pour continuer.");
+            if (trueExamHistoryAbandoning || !trueExamStorageOwned) return; // History may have consumed this shared acquisition.
             const snapshot = validateTrueExamSnapshot(readTrueExamSnapshot());
             if (expectedId !== null && snapshot.id !== expectedId) throw new Error("Cet ancien document ne peut plus reprendre sa session : elle a été remplacée.");
             if (snapshot.finishReason === "abandoned") throw new Error("Cet examen a été abandonné et ne peut plus être repris.");
@@ -1298,6 +1317,7 @@ async function restoreTrueExamSession(expectedId = null) {
             saveTrueExamSession();
             if (trueExamState === "running") armTrueExamHistoryGuard(trueExamSession.id);
         } catch (error) {
+            if (trueExamHistoryAbandoning) return;
             failTrueExamRecovery(error instanceof SyntaxError
                 ? "La sauvegarde de l’examen est invalide : lecture impossible." : error.message);
         }
@@ -1399,15 +1419,25 @@ function armTrueExamHistoryGuard(sessionId) {
     }
 }
 
-function abandonTrueExamFromHistory(sessionId) {
-    if (trueExamSession?.id === sessionId) {
-        if (trueExamState === "running") finishTrueExamHistoryExit();
-        return;
-    }
-    // Back can arrive immediately after F5, before asynchronous catalogue/lock loading.
+async function abandonTrueExamFromHistory(sessionId) {
+    if (trueExamSession?.id === sessionId && trueExamState !== "running") return;
+    const alreadyOwned = trueExamStorageOwned;
+    trueExamHistoryAbandoning = sessionId;
     try {
-        const snapshot = readTrueExamSnapshot();
-        if (snapshot?.id !== sessionId || snapshot.status !== "running" || snapshot.tabId !== trueExamTabId) return;
+        // Back may precede restoration after F5, but a duplicate must never bypass the owner.
+        if (!alreadyOwned && !await acquireTrueExamOwnership()) return;
+        if (!trueExamStorageOwned) return;
+        const snapshot = validateTrueExamSnapshot(readTrueExamSnapshot());
+        if (snapshot.id !== sessionId || snapshot.status !== "running") return;
+        if (!navigator.locks?.request && snapshot.ownerId && snapshot.ownerId !== trueExamPageId) return;
+        if (Date.now() >= snapshot.endsAt) {
+            if (trueExamSession?.id === sessionId) refreshTrueExamTimer();
+            return;
+        }
+        if (trueExamSession?.id === sessionId) {
+            finishTrueExamHistoryExit();
+            return;
+        }
         window.localStorage.setItem(TRUE_EXAM_STORAGE_KEY, JSON.stringify({
             version: 2, id: sessionId, status: "finished", finishReason: "abandoned"
         }));
@@ -1417,16 +1447,26 @@ function abandonTrueExamFromHistory(sessionId) {
         trueExamExpiredEl.textContent = "L’examen a été abandonné en quittant son entrée dans l’historique.";
         updateTrueExamControls();
     } catch { trueExamStorageWarning(); }
+    finally {
+        if (!alreadyOwned && trueExamStorageOwned) releaseTrueExamOwnership();
+        trueExamHistoryAbandoning = null;
+    }
 }
 
 syncTrueExamHistoryGuard();
-window.addEventListener("popstate", event => {
+window.addEventListener("popstate", async event => {
     const marker = trueExamHistoryMarker(event.state);
     const guard = trueExamHistoryGuard;
     if (guard?.atExam && marker?.kind === "base" && marker.guardId === guard.guardId) {
         guard.atExam = false; // Consume once before the asynchronous traversal: never a history loop.
-        abandonTrueExamFromHistory(guard.sessionId);
-        try { window.history.back(); } catch { /* No retry: never trap browser navigation. */ }
+        try { await abandonTrueExamFromHistory(guard.sessionId); }
+        finally {
+            // The user may already have traversed away while ownership was being checked.
+            const current = trueExamHistoryMarker();
+            if (current?.kind === "base" && current.guardId === guard.guardId) {
+                try { window.history.back(); } catch { /* No retry: never trap browser navigation. */ }
+            }
+        }
         return;
     }
     trueExamHistoryGuard = marker?.kind === "exam" ? { ...marker, atExam: true } : null;
@@ -1451,7 +1491,7 @@ if (window.navigation?.addEventListener) {
         if (trueExamState === "running" && trueExamSession && trueExamHistoryExit?.id === trueExamSession.id &&
             !trueExamHistoryExit?.signal?.aborted && event.navigationType === "traverse" &&
             event.from?.index === trueExamHistoryExit.fromIndex && currentIndex === trueExamHistoryExit.toIndex) {
-            finishTrueExamHistoryExit();
+            abandonTrueExamFromHistory(trueExamSession.id);
         }
     });
 }
@@ -1459,7 +1499,7 @@ if (window.navigation?.addEventListener) {
 window.addEventListener("pagehide", () => {
     if (!trueExamSession || !trueExamStorageOwned) return;
     if (trueExamHistoryExit?.id === trueExamSession.id && !trueExamHistoryExit.signal?.aborted) {
-        finishTrueExamHistoryExit();
+        abandonTrueExamFromHistory(trueExamSession.id);
         return;
     }
     // pagehide alone is an interruption, never evidence of voluntary abandonment.
