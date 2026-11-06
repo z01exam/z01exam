@@ -35,6 +35,7 @@
             <div id="exam-title" class="exam-title">Sélectionne un exercice</div>
         </div>
         <div class="topbar-right">
+            <button id="true-exam-finish" class="btn-run" hidden>Terminer l'examen</button>
             <div class="switch-group mode-switch-group">
                 <div class="mode-switch" role="radiogroup" aria-label="Mode de l'application">
                     <label class="mode-option">
@@ -103,7 +104,7 @@
                             <pre id="line-numbers-text"></pre>
                         </div>
                         <pre id="highlighted-code" class="highlighted-code"><code></code></pre>
-                        <textarea id="code-editor" spellcheck="false"></textarea>
+                        <textarea id="code-editor" spellcheck="false" autocomplete="off"></textarea>
                     </div>
                 </div>
             </div>
@@ -123,6 +124,25 @@
             </div>
         </section>
     </div>
+
+    <main id="true-exam-results" class="true-exam-results" aria-labelledby="true-exam-results-title" hidden>
+        <h1 id="true-exam-results-title" tabindex="-1">True Exam — Terminé</h1>
+        <p id="true-exam-result-summary" class="true-exam-result-summary"></p>
+        <dl id="true-exam-result-stats" class="true-exam-result-stats"></dl>
+        <div class="true-exam-result-table">
+            <table>
+                <caption>Résultats par exercice</caption>
+                <thead><tr><th scope="col">Exercice</th><th scope="col">Niveau</th><th scope="col">Résultat</th><th scope="col">Soumissions</th></tr></thead>
+                <tbody id="true-exam-result-rows"></tbody>
+            </table>
+        </div>
+        <p class="true-exam-result-note">Seules les évaluations valides reçues avant la fin de l’examen sont comptabilisées.</p>
+        <p id="true-exam-result-storage" role="status" class="true-exam-result-note"></p>
+        <div class="true-exam-result-actions">
+            <button id="true-exam-new" class="btn-run">Nouvel examen</button>
+            <button id="true-exam-quit" class="btn-run">Quitter</button>
+        </div>
+    </main>
 
     <section id="learning-panel" class="learning-panel">
         <div class="learning-header">
