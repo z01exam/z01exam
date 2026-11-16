@@ -10,7 +10,7 @@
     { "id": "08", "title": "Arguments CLI", "path": "learning-content/8 Arguments CLI.md" },
     { "id": "09", "title": "String comme tableau de bytes", "path": "learning-content/9 String comme tableau de bytes.md" },
     { "id": "10", "title": "Itérer une string", "path": "learning-content/10 Itérer une string.md" },
-    { "id": "11", "title": "Concaténer et construire une string", "path": "learning-content/11 # Concaténer et construire une string.md" },
+    { "id": "11", "title": "Concaténer et construire une string", "path": "learning-content/11 Concaténer et construire une string.md" },
     { "id": "12", "title": "Nettoyer espaces et découper en mots", "path": "learning-content/12 Nettoyer espaces et découper en mots.md" },
     { "id": "13", "title": "Recherche remplacement simple", "path": "learning-content/13 Recherche remplacement simple.md" },
     { "id": "14", "title": "Transformations de casse", "path": "learning-content/14 Transformations de casse.md" },
