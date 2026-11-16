@@ -473,6 +473,7 @@ let trueExamSuspendedSessionId = null;
 // End True Exam persistence state
 
 let previousLevelFilter = "all";
+let previousExerciseId = null;
 let currentTrack = "go";
 let goDraft = "";
 let jsDraft = "";
@@ -1637,16 +1638,38 @@ function setTrueExamMode(enabled) {
 
     if (trueExamMode) {
         previousLevelFilter = currentLevelFilter;
+        previousExerciseId = currentExercise ? exId(currentExercise) : null;
         prepareTrueExam();
     } else {
         stopTrueExamSeries();
         currentLevelFilter = previousLevelFilter || "all";
         renderLevelFilters();
         renderChips();
+        restoreExamExercise();
     }
 
     updateModeLabel();
     updateTrueExamControls();
+}
+
+// En quittant True Exam, réaffiche l'exercice ouvert avant d'y entrer, sinon le
+// premier du filtre : prepareTrueExam() a vidé currentExercise. L'éditeur n'est pas touché.
+function restoreExamExercise() {
+    const filtered = getFilteredExercises();
+    const previousId = previousExerciseId;
+    previousExerciseId = null;
+    const target = filtered.find(ex => exId(ex) === previousId) || filtered[0];
+    if (target) {
+        // Pas selectExercise() : l'éditeur reste tel que la sortie l'a laissé.
+        currentExercise = target;
+        setActiveExerciseChip(exId(target));
+        updateExerciseHeader(target);
+        statementEl.innerHTML = markdownToHtml(exStatement(target)) || "Contenu Markdown indisponible pour cet exercice.";
+        highlightMarkdownCode(statementEl);
+    } else {
+        examTitleEl.textContent = "Sélectionne un exercice";
+        statementEl.innerHTML = "Aucun exercice disponible pour ce mode.";
+    }
 }
 
 function buildTrueExamSeries() {

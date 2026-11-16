@@ -72,7 +72,7 @@ function setup(options = {}) {
         const trackSwitchEl = {classList: {toggle() {}}}, trackInputs = ['go','js','rust','java'].map(value => ({value}));
         const modeInputs = ['exam','true-exam','learning'].map(value => ({value}));
         const appEl = {classList: {toggle() {}}}, modeSwitchEl = null;
-        let learningMode = false, currentLevelFilter = 'all', previousLevelFilter = 'all';
+        let learningMode = false, currentLevelFilter = 'all', previousLevelFilter = 'all', previousExerciseId = null;
         let goDraft = '', jsDraft = '', rustDraft = '', javaDraft = '';
         const jsDefaultSnippet = '', rustDefaultSnippet = '', javaDefaultSnippet = '';
         const editorTabLabelEl = {};
@@ -692,7 +692,8 @@ test('confirmed exit clears session drafts, editor and persisted code before For
     assert.equal(s.run('trueExamSession'), null);
     assert.equal(s.run('trueExamSeries.length'), 0);
     assert.equal(s.run('trueExamIndex'), -1);
-    assert.equal(s.run('currentExercise'), null);
+    // Exam reprend un exercice régulier, sans le code de la session abandonnée.
+    assert.equal(s.run('currentExercise && currentExercise.id'), s.run('available[0].id'));
     assert.equal(s.run('codeEditorEl.value'), '');
     await s.fire('pageshow', {persisted: true});
     assert.equal(s.run('trueExamSession'), null);
@@ -1638,4 +1639,16 @@ test('history abandonment releases ownership already acquired before in-memory r
     assert.equal(b.run('trueExamReleaseLock'), null);
     assert.equal(locks.holder, null);
     assert.deepEqual(locks.released, ['A', 'B']);
+});
+
+test('leaving True Exam restores the exercise shown before entering it', () => {
+    const s = setup();
+    s.run(`setAppMode('exam'); available = [{id: 'a'}, {id: 'b'}]; currentExercise = available[1]`);
+    s.run(`setAppMode('true-exam')`);
+    assert.equal(s.run('currentExercise'), null);
+    s.run(`codeEditorEl.value = 'kept'; setAppMode('exam')`);
+    assert.equal(s.run('currentExercise && currentExercise.id'), 'b');
+    assert.equal(s.run('codeEditorEl.value'), 'kept');
+    s.run(`setAppMode('true-exam'); currentExercise = null; previousExerciseId = 'gone'; setAppMode('exam')`);
+    assert.equal(s.run('currentExercise && currentExercise.id'), 'a');
 });
