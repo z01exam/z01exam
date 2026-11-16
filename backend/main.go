@@ -301,7 +301,7 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	allowed := path == "index.html" || path == "app.js" || path == "version.js" || path == "style.css" || path == "blank.css"
+	allowed := path == "index.html" || path == "app.js" || path == "version.js" || path == "style.css" || path == "blank.css" || path == "favicon.svg"
 	if strings.HasPrefix(path, "learning-content/") {
 		allowed = filepath.Ext(path) == ".md" || path == "learning-content/manifest.json"
 	}

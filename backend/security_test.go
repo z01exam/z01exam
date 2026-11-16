@@ -16,7 +16,7 @@ func TestStaticAllowlist(t *testing.T) {
 	old := rootDir
 	rootDir = t.TempDir()
 	defer func() { rootDir = old }()
-	for _, name := range []string{"index.html", "app.js", "backend/main.go", ".git/config", "learning-content/lesson.md", "learning-content/manifest.json", "Js_exam_instructions/test.md", "server"} {
+	for _, name := range []string{"index.html", "app.js", "backend/main.go", ".git/config", "learning-content/lesson.md", "learning-content/manifest.json", "Js_exam_instructions/test.md", "server", "favicon.svg"} {
 		path := filepath.Join(rootDir, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			t.Fatal(err)
@@ -28,7 +28,7 @@ func TestStaticAllowlist(t *testing.T) {
 	if err := os.Symlink(filepath.Join(rootDir, "backend/main.go"), filepath.Join(rootDir, "learning-content/link.md")); err != nil {
 		t.Fatal(err)
 	}
-	for path, status := range map[string]int{"/": 200, "/exam": 200, "/session/exam": 200, "/backend/nonexistent": 404, "/app.js": 200, "/learning-content/lesson.md": 200, "/learning-content/manifest.json": 200, "/Js_exam_instructions/test.md": 200, "/backend": 404, "/backend/main.go": 404, "/.git/config": 404, "/server": 404, "/learning-content/link.md": 404, "/learning-content/missing.md": 404} {
+	for path, status := range map[string]int{"/": 200, "/exam": 200, "/session/exam": 200, "/backend/nonexistent": 404, "/app.js": 200, "/favicon.svg": 200, "/learning-content/lesson.md": 200, "/learning-content/manifest.json": 200, "/Js_exam_instructions/test.md": 200, "/backend": 404, "/backend/main.go": 404, "/.git/config": 404, "/server": 404, "/learning-content/link.md": 404, "/learning-content/missing.md": 404} {
 		w := httptest.NewRecorder()
 		handleStatic(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != status {
